@@ -15,13 +15,13 @@
                     <span class="glitchtextback">ROBOT <br> SOCCER</span>
                 </div>
 
-                <!-- 
-
-                <router-link to="/about">Go to about</router-link> -->
+                <div class="pt-8">
+                    <img src="https://docs.lightburnsoftware.com/legacy/img/QRCode/ExampleCode.png" alt="QR Code"
+                        class="h-60 w-60 p-10 bg-white">
+                </div>
 
             </div>
 
-            <!-- <router-link to="/about">Go to About</router-link> -->
         </div>
     </div>
 </template>
