@@ -11,13 +11,15 @@
                 </div> -->
 
                 <div class="relative inline-block">
-                    <span class="glitchtextfront">ROBOT <br> SOCCER</span>
-                    <span class="glitchtextback">ROBOT <br> SOCCER</span>
+                    <span class="glitchtextfront pulse-effect">ROBOT <br> SOCCER</span>
+                    <span class="glitchtextback pulse-effect">ROBOT <br> SOCCER</span>
                 </div>
 
                 <div class="pt-8">
-                    <img src="https://docs.lightburnsoftware.com/legacy/img/QRCode/ExampleCode.png" alt="QR Code"
-                        class="h-60 w-60 p-10 bg-white">
+                    <router-link to="/tv/levelselector">
+                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=http://127.0.0.1:8000/"
+                            alt="QR Code" class="h-60 w-60 p-10 bg-white">
+                    </router-link>
                 </div>
 
             </div>
@@ -59,5 +61,23 @@
     letter-spacing: 5px;
     left: -1rem;
 
+}
+
+@keyframes pulse-glitch {
+
+    0%,
+    100% {
+        transform: scale(1);
+
+    }
+
+    50% {
+        transform: scale(1.05);
+
+    }
+}
+
+.pulse-effect {
+    animation: pulse-glitch 1.5s infinite ease-in-out;
 }
 </style>
