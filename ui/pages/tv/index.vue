@@ -15,11 +15,15 @@
                     <span class="glitchtextback pulse-effect">ROBOT <br> SOCCER</span>
                 </div>
 
-                <div class="pt-8">
+                <div class="pt-8 flex items-center">
                     <router-link to="/tv/levelselector">
                         <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=http://127.0.0.1:8000/"
                             alt="QR Code" class="h-60 w-60 p-10 bg-white">
                     </router-link>
+                    <div class="ml-4">
+                        <p class="text-white text-3xl">Connected:</p>
+                        <p class="text-white text-3xl">{{ message }}</p>
+                    </div>
                 </div>
 
             </div>
@@ -27,6 +31,35 @@
         </div>
     </div>
 </template>
+
+<script>
+export default {
+    data() {
+        return {
+            socket: null,
+            message: null
+        }
+    },
+    mounted() {
+        this.socket = new WebSocket((process.env.NODE_ENV === "development" ? "ws://127.0.0.1:8000" : "wss://your-production-url") + "/ws/tv/onloading");
+
+        this.socket.onopen = () => {
+            console.log('Connected to websocket');
+        }
+
+        // on message from server, set the this.message to the message
+        this.socket.onmessage = (e) => {
+            this.message = e.data;
+
+            if (this.message === "2") {
+                this.$router.push('/tv/levelselector');
+            }
+        }
+
+    }
+}
+
+</script>
 
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Black+Ops+One&display=swap');
