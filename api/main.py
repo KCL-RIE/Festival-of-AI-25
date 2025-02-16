@@ -5,7 +5,7 @@ app = FastAPI()
 
 # write a get method to return some text
 
-connnectedUsers = 0
+connectedUsers = 0
 maxConnectedUsers = 2
 
 
@@ -19,8 +19,8 @@ async def websocket_tv_onloading(websocket: WebSocket):
     await websocket.accept()
     try:
         while True:
-            global connnectedUsers
-            await websocket.send_text(str(connnectedUsers))
+            global connectedUsers
+            await websocket.send_text(str(connectedUsers))
             await asyncio.sleep(1)  # Adjust the interval as needed
     except Exception as e:
         print(f"Error: {e}")
@@ -30,18 +30,25 @@ async def websocket_tv_onloading(websocket: WebSocket):
 
 @app.websocket("/ws/mobile")
 async def websocket_mobile(websocket: WebSocket):
-    global connnectedUsers
-    if connnectedUsers >= maxConnectedUsers:
+    global connectedUsers
+    if connectedUsers >= maxConnectedUsers:
         await websocket.close()
         return
     else:
-        connnectedUsers += 1
+        connectedUsers += 1
+        user_id = connectedUsers
         await websocket.accept()
+
+        if connectedUsers == maxConnectedUsers:
+            await websocket.send_json({'userid': user_id, 'ready': True})
+        else:
+            await websocket.send_json({'userid': user_id, 'ready': False})
+
         try:
             while True:
                 data = await websocket.receive_text()
-                await websocket.send_text(f"Message text was: {data}, {connnectedUsers}")
+                await websocket.send_json({'userid': user_id, 'ready': True})
         except Exception as e:
             print(f"Error: {e}")
         finally:
-            connnectedUsers -= 1
+            connectedUsers -= 1
