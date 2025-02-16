@@ -1,7 +1,7 @@
 <template>
     <div>
         <div class="bg-image">
-            <div class="col px-30 py-30 relative">
+            <div class="col px-30 pt-30 relative">
                 <!-- <div class="relative inline-block">
 
                     <h1 class="glitchtext absolute -left-0.5 text-gray-400" data-text="ROBOT SOCCER">ROBOT <br> SOCCER

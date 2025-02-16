@@ -10,7 +10,9 @@ This repo contains code for running a backend FastAPI server and frontend Vue.js
 This repo structure is based off a design by Diogo Miguel, view his blog post [here](https://dimmaski.com/serve-vue-fastapi/) and the source repo [here](https://github.com/dimmaski/fastapi-vue).
 
 
-### Serve Backend locally
+npm run dev --prefix ui & uvicorn api.main:app --reload
+
+<!-- ### Serve Backend locally
 
 ```sh
 cd api
@@ -42,4 +44,4 @@ npm run watch
 Run from the parent directory.
 ```
 npm run watch --prefix ui & uvicorn api.main:app --reload && fg
-```
+``` -->
