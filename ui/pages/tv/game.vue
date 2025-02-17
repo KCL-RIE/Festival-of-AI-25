@@ -129,7 +129,7 @@
 }
 
 .team-human {
-    background-image: url('/team-rie.png');
+    background-image: url('/team_human.png');
     background-size: 100% 100%;
     background-position: bottom;
     position: absolute;
