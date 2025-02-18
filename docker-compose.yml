@@ -1,0 +1,8 @@
+version: "3.8"
+services:
+  app:
+    build: .
+    network_mode: "host"  # Use the host's network stack
+    restart: always
+    ports:
+      - "5112:5112"  # Map port 5112 from container to host

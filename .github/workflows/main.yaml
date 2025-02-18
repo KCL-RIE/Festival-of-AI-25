@@ -1,0 +1,28 @@
+name: Deploy Docker Container
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up SSH key
+      uses: webfactory/ssh-agent@v0.5.3
+      with:
+        ssh-private-key: ${{ secrets.HOME_PC_SSH_PRIVATE_KEY }}
+
+    - name: Deploy to Home PC
+      run: |
+        ssh -o StrictHostKeyChecking=no dylan@srv1.dylankainth.com << 'EOF'
+          cd /home/dylan/Docker/livedeploy/gotest/go-vuejs-test
+              git pull https://${{ secrets.HOME_PC_GITHUB_TOKEN }}@github.com/KCL-RIE/Festival-of-AI-25.git
+          docker compose pull
+          docker compose up -d --build
+        EOF
