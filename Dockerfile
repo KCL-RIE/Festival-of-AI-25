@@ -10,7 +10,7 @@ FROM node:20 AS ui
 
 WORKDIR /ui
 COPY ui/ ./ui/
-RUN corepack enable && npm install && npm run build
+RUN npm install && npm run build
 
 # === Final Image ===
 FROM python:3.11
