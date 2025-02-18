@@ -21,7 +21,7 @@ jobs:
     - name: Deploy to Home PC
       run: |
         ssh -o StrictHostKeyChecking=no dylan@srv1.dylankainth.com << 'EOF'
-          cd /home/dylan/Docker/livedeploy/gotest/go-vuejs-test
+          cd /home/dylan/Docker/livedeploy/festival-of-ai/Festival-of-AI-25
               git pull https://${{ secrets.HOME_PC_GITHUB_TOKEN }}@github.com/KCL-RIE/Festival-of-AI-25.git
           docker compose pull
           docker compose up -d --build

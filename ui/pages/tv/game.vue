@@ -13,9 +13,9 @@
                         <div class="board">
                             <div class="team-rie"></div>
                             <div class="number">
-                                <span>{{rie_score}}</span>
+                                <span>{{ rie_score }}</span>
                                 <span> : </span>
-                                <span>{{human_score}}</span>
+                                <span>{{ human_score }}</span>
                             </div>
                             <div class="team-human"></div>
                         </div>
@@ -37,9 +37,9 @@
                     <h1>player</h1>
                 </div>
             </div>
-        </div>   
+        </div>
     </div>
-    
+
 </template>
 
 <script>
@@ -169,5 +169,4 @@ export default {
     display: flex;
     flex-grow: 4;
 }
-
 </style>
