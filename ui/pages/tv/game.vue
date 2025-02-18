@@ -13,18 +13,24 @@
                         <div class="board">
                             <div class="team-rie"></div>
                             <div class="number">
-                                <span>{{ rie_score }}</span>
+                                <span>{{rie_score}}</span>
                                 <span> : </span>
-                                <span>{{ human_score }}</span>
+                                <span>{{human_score}}</span>
                             </div>
                             <div class="team-human"></div>
                         </div>
                     </div>
-                    
                 </div>
 
                 <div class="panel">
                     <h1>panel</h1>
+                    <div class="panel_buttons">
+                        <span class="part_button">PART</span>
+                        <span class="log_button">LOG</span>
+                    </div>
+                    <div class="panel_screens">
+                        <div class></div>
+                    </div>
                 </div>
 
                 <div class="player">
@@ -35,6 +41,19 @@
     </div>
     
 </template>
+
+<script>
+export default {
+    name: 'game',
+    components: {},
+    data() {
+        return {
+            rie_score: 3,
+            human_score: 1,
+        };
+    },
+};
+</script>
 
 <style scoped>
 @font-face {
@@ -126,6 +145,7 @@
     top: 60%;
     left: 50%;
     transform: translate(-50%, -50%);
+    font-size: clamp(10px, 4vw, 48px);
 }
 
 .team-human {
