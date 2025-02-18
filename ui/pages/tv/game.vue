@@ -23,7 +23,7 @@
                 </div>
 
                 <div class="panel">
-                    <h1>panel</h1>
+                    <h1>**</h1>
                     <div class="panel_buttons">
                         <span class="part_button">PART</span>
                         <span class="log_button">LOG</span>
@@ -81,7 +81,9 @@ export default {
     background-repeat: no-repeat;
     background-size: contain;
     background-position: center;
-    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    width: 90%;
 }
 
 .container-1 {
@@ -162,12 +164,20 @@ export default {
 
 .panel {
     display: flex;
+    flex-direction: column;
     flex-grow: 4;
+}
+
+.panel-buttons {
+    display: flex;
+    flex-direction: row;
 }
 
 .player {
     display: flex;
     flex-grow: 4;
 }
+
+
 
 </style>
