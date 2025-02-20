@@ -8,7 +8,11 @@
                         <span class="glitchtextback pulse-effect">LEVEL</span>
                     </div>
                 </h1>
-
+            </div>
+            <div class="level-container">
+                <span class="pulse-effect easy"></span>
+                <span class="pulse-effect normal"></span>
+                <span class="pulse-effect hard"></span>
             </div>
 
         </div>
@@ -48,6 +52,44 @@
     letter-spacing: 5px;
     left: -1rem;
 
+}
+
+.level-container {
+    display: flex;
+    flex-direction: row;
+    width: 80vw;
+    margin: 0 auto
+}
+
+.easy {
+    margin: auto;
+    display: flex;
+    background-size: 100% 100%;
+    width: 350px;
+    height: 350px;
+    background-image: url('/level-easy.png');
+    background-position: center;
+}
+
+.normal {
+    margin: auto;
+
+    display: flex;
+    background-size: 100% 100%;
+    width: 350px;
+    height: 350px;
+    background-image: url('/level-normal.png');
+    background-position: center;
+}
+
+.hard {
+    margin: auto;
+    background-size: 100% 100%;
+    width: 350px;
+    height: 350px;
+    display: flex;
+    background-image: url('/level-hard.png');
+    background-position: center;
 }
 
 @keyframes pulse-glitch {
