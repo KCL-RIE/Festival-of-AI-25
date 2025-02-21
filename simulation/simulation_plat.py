@@ -2,6 +2,7 @@ import pygame
 import math
 import random
 import time
+from abc import ABC, abstractmethod
 
 # Constants
 # Original Pitch Dimensions (in cm)
@@ -13,6 +14,8 @@ SCALE_FACTOR = 3  # Changed to 3
 
 PITCH_WIDTH = int(ORIGINAL_PITCH_WIDTH * SCALE_FACTOR)
 PITCH_HEIGHT = int(ORIGINAL_PITCH_HEIGHT * SCALE_FACTOR)
+UI_WIDTH = 200  # Space to show messages about team members
+UI_HEIGHT = PITCH_HEIGHT # Make UI full height
 
 ROBOT_RADIUS = int(6 * SCALE_FACTOR)  # 12cm diameter / 2
 BALL_RADIUS = int(2 * SCALE_FACTOR)  # 4cm diameter / 2
@@ -21,6 +24,7 @@ MOUTH_LENGTH = int(2 * SCALE_FACTOR)  # Adjust as needed - width of mouth openin
 ROBOT_MAX_SPEED = 3 * SCALE_FACTOR
 BALL_MAX_SPEED = 8 * SCALE_FACTOR
 DT = 0.1  # Time step for simulation (adjust for stability/speed)
+BALL_FRICTION = 0.05  # Friction coefficient to decelerate ball.
 
 # Goalnet dimensions
 GOAL_WIDTH = int(20 * SCALE_FACTOR)   # Swapped width and height
@@ -34,14 +38,15 @@ RED = (255, 0, 0)
 BLUE = (0, 0, 255)
 GREEN = (0, 255, 0)
 YELLOW = (255, 255, 0)
+UI_BACKGROUND = (220, 220, 220) #Light Gray
 
 # AI Constants (tune these)
-SHOOT_CHANCE = 0.1  # Base chance to shoot (Used by Team B for "Long Shots")
+SHOOT_CHANCE = 0.2  # Base chance to shoot (Used by Team B for "Long Shots")
 PASS_CHANCE = 0.9  # Increased passing chance
 PASS_DISTANCE = 5 * ROBOT_RADIUS  # Preferred passing distance
 BLOCKING_DISTANCE = 4 * ROBOT_RADIUS
 AGGRESSIVE_SHOOT_RANGE = 10 * ROBOT_RADIUS  # Bonus shooting range
-LONG_SHOT_CHANCE = 0.1 #Chance of long shot in Team B
+LONG_SHOT_CHANCE = 0.1  # Chance of long shot in Team B
 
 #UI Button Parameters
 BUTTON_WIDTH = 100
@@ -54,8 +59,48 @@ BUTTON_TEXT_COLOR = BLACK
 def distance(x1, y1, x2, y2):
     return math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
+class Strategy(ABC):
+    @abstractmethod
+    def make_strategic_decision(self, robot, game, game_state):
+        """
+        This method is the entry point for the strategy.
+
+        Args:
+            robot (Robot): The robot making the decision.
+            game (FootballGame): The current game state.
+            game_state: All robot positions and ball positions etc.
+
+        Returns:
+            str: A description of the action taken (e.g., "shooting", "passing", "dribbling").
+        """
+        pass
+
+class DribbleStrategy(Strategy):
+    def make_strategic_decision(self, robot, game, game_state):
+        # Code to implement the dribbling strategy.
+        goal_x = game.goal_b.x + game.goal_b.width / 2
+        goal_y = game.goal_b.y + game.goal_b.height / 2
+        angle_to_goal = math.atan2(goal_y - robot.y, goal_x - robot.x)
+
+        # Move towards the goal to dribble.
+        return {"action": "move", "parameters": {"angle": angle_to_goal}}  # Return move towards ball and not shoot
+
+class PassAndShootStrategy(Strategy):
+    def make_strategic_decision(self, robot, game, game_state):
+        # Code to implement the passing and shooting strategy
+
+        team_robots = [r for r in game.robots if r.team == robot.team and r != robot]
+        teammate = team_robots[0] if team_robots else None
+        shootAction = {"action": "shoot", "parameters": {}}
+        if teammate:
+            if random.random() < PASS_CHANCE:
+                return {"action": "pass", "parameters": {}}
+        #Otherwise fall back on shooting it anyway
+
+        return shootAction
+
 class Robot:
-    def __init__(self, x, y, team, color, game):  # Pass game instance
+    def __init__(self, x, y, team, color, game, strategy):  # Pass game instance
         self.x = x
         self.y = y
         self.angle = 0  # Facing direction in radians
@@ -67,7 +112,9 @@ class Robot:
         self.vx = 0  # Add x-velocity
         self.vy = 0  # Add y-velocity
         self.game = game  # Store the game instance
-        self.role = "attacker"  # Default Role - You can expand this
+        self.role = "attacker"
+        self.strategy = strategy # Added strategy
+        self.current_action = "idle" #Initial state
 
     def move(self, dx, dy):
         # Normalize the movement vector and scale by speed
@@ -122,7 +169,9 @@ class Robot:
             #Move ball away from the robot:
             ball.x = self.x + (ROBOT_RADIUS + BALL_RADIUS + 1) * math.cos(self.angle) #+1 prevents instant re-grab
             ball.y = self.y + (ROBOT_RADIUS + BALL_RADIUS + 1) * math.sin(self.angle)
+            self.current_action = "shooting"
             return "shooting"
+        self.current_action = "idle"
         return None
 
     def draw(self, screen):
@@ -142,68 +191,56 @@ class Robot:
         end_index = (mouth_index + 1) % 6
         pygame.draw.line(screen, BLACK, points[start_index], points[end_index], int(3*SCALE_FACTOR)) # Thicker mouth line
 
+    def get_game_state(self): # Turns game state into inputs for various strategies
+        teammate = None
+        for team_robot in self.game.robots:
+            if team_robot.team == self.team and team_robot != self:
+                teammate = team_robot
+                break
+
+        game_state = {
+            "x": self.x,
+            "y": self.y,
+            "angle": self.angle,
+            "vx": self.vx,
+            "vy": self.vy,
+            "dribbling": self.dribbling,
+            "team": self.team,
+            "role": self.role,
+            "ball_x": self.game.ball.x,
+            "ball_y": self.game.ball.y,
+            "ball_vx": self.game.ball.vx,
+            "ball_vy": self.game.ball.vy,
+            "teammate_present": teammate is not None,
+            "teammate_x": teammate.x if teammate else None,
+            "teammate_y": teammate.y if teammate else None,
+            "own_goal_x": self.game.goal_a.x + self.game.goal_a.width / 2 if self.team == "B" else self.game.goal_b.x + self.game.goal_b.width / 2,
+            "own_goal_y": self.game.goal_a.y + self.game.goal_a.height / 2 if self.team == "B" else self.game.goal_b.y + self.game.goal_b.height / 2,
+            "opponent_goal_x": self.game.goal_b.x + self.game.goal_b.width / 2 if self.team == "A" else self.game.goal_a.x + self.game.goal_a.width / 2,
+            "opponent_goal_y": self.game.goal_b.y + self.game.goal_b.height / 2 if self.team == "A" else self.game.goal_a.y + self.game.goal_a.height / 2,
+            "pitch_width": PITCH_WIDTH,
+            "pitch_height": PITCH_HEIGHT
+        }
+        return game_state
+
     def make_strategic_decision(self):
-        """
-        Implements the strategic decision-making based on the team strategy.
-        """
-        ball = self.game.ball
+        """Delegates the decision to the current strategy, passing the game state."""
+        game_state = self.get_game_state()
+        action = self.strategy.make_strategic_decision(self, self.game, game_state)
+        if not action:
+            return
 
-        if self.dribbling:  # Only make decisions if dribbling
-            if self.team == "A":
-                return self.team_a_strategy()  # Dribbling (Red Team)
-            else:
-                return self.team_b_strategy()  # Shooting/Passing (Blue Team)
-        else: #if not dribbling
-            # Always go for the ball
-            angle_to_ball = math.atan2(ball.y - self.y, ball.x - self.x)
-            dist_to_ball = distance(self.x, self.y, ball.x, ball.x)
+        #Only take actions if they have the ball!
+        if self.dribbling:
+            if action["action"] == "move":
+                self.current_action = "moving"
+                self.move(math.cos(action["parameters"]["angle"]), math.sin(action["parameters"]["angle"])) #Move!
+            elif action["action"] == "shoot" or action["action"] == "pass":
+                state = self.shoot(self.game.ball, 10 * SCALE_FACTOR) #This is where to implement the ball shooting
+                if state:
+                    self.current_action = "shooting"
 
-            if dist_to_ball > ROBOT_RADIUS + BALL_RADIUS: #Is far from ball
-                self.move(math.cos(angle_to_ball), math.sin(angle_to_ball)) #Head to ball
-                return "heading to ball"
-            else: #Idle behaviour
-                return "idle"
-
-    def team_a_strategy(self):
-        """
-        Team A: Prefers Dribbling - only shoots if absolutely unavoidable/forced
-        """
-
-        #Calculate angle to the opponent's goal.
-        goal_x = self.game.goal_b.x + self.game.goal_b.width / 2
-        goal_y = self.game.goal_b.y + self.game.goal_b.height / 2
-        angle_to_goal = math.atan2(goal_y - self.y, goal_x - self.x)
-
-        #Move towards the goal to dribble.
-        self.move(math.cos(angle_to_goal), math.sin(angle_to_goal)) #Dribble towards goal.
-        return "dribbling" #Dribbling State
-    def team_b_strategy(self):
-        """
-        Team B: Prioritizes Shooting and Passing (Guaranteed to Shoot or Pass Every Time)
-        """
-        #If there is a teammate, and chance is present: Then pass!
-        team_robots = [robot for robot in self.game.robots if robot.team == self.team and robot != self]
-        teammate = team_robots[0] if team_robots else None
-
-        goal_x = self.game.goal_a.x + self.game.goal_a.width / 2
-        goal_y = self.game.goal_a.y + self.game.goal_a.height / 2
-        angle_to_goal = math.atan2(goal_y - self.y, goal_x - self.x)
-        dist_to_goal = distance(self.x, self.y, goal_x, goal_y)
-
-        #Will only pass if a teammate exists.
-        if teammate and random.random() < PASS_CHANCE: #If has teammate and passes under pass chance
-                self.angle = math.atan2(teammate.y - self.y, teammate.x - self.x) #Then passes to teammate and is facing ball!
-                return self.shoot(self.game.ball, 5 * SCALE_FACTOR)
-        else: #Then simply shoot if all else fails: Long shot
-
-            # Attempt Long Shot (Low Probability)
-            if random.random() < LONG_SHOT_CHANCE: #Shoot with a long shot.
-                self.angle = angle_to_goal #Face goal
-                return self.shoot(self.game.ball, 10 * SCALE_FACTOR) #SHOOT LONG DISTANCE
-            else:
-                self.angle = angle_to_goal
-                return self.shoot(self.game.ball, 10 * SCALE_FACTOR) #SHOOT in lieu of nothing.
-
+        return self.current_action
 
 class Ball:
     def __init__(self, x, y):
@@ -213,6 +250,16 @@ class Ball:
         self.vy = 0
 
     def move(self):
+        #Apply ball friction - deceleration
+        self.vx -= BALL_FRICTION * self.vx * DT
+        self.vy -= BALL_FRICTION * self.vy * DT
+
+        #If extremely small speed, force set to 0
+        if abs(self.vx) < 0.1:
+            self.vx = 0
+        if abs(self.vy) < 0.1:
+            self.vy = 0
+
         self.x += self.vx * DT
         self.y += self.vy * DT
 
@@ -258,17 +305,43 @@ class GoalNet:
 class FootballGame:
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((PITCH_WIDTH, PITCH_HEIGHT))
+        self.screen = pygame.display.set_mode((PITCH_WIDTH + UI_WIDTH, PITCH_HEIGHT))
         pygame.display.set_caption("Robot Football")
         self.clock = pygame.time.Clock()
 
+        # Define available strategies
+        self.strategies = {
+            "Dribble": DribbleStrategy(),
+            "PassAndShoot": PassAndShootStrategy()
+            # Add more strategies here as needed
+        }
+
+        # Assign initial strategies to teams
+        self.team_strategies = {
+            "A": "Dribble",  # Team A starts with Dribble strategy
+            "B": "PassAndShoot"  # Team B starts with PassAndShoot strategy
+        }
+
         # Initialize robots (two teams) - Initial positions will be set by the user
         self.robots = [
-            Robot(0, 0, "A", RED, self),  # Initial positions are placeholders, pass game instance
-            Robot(0, 0, "B", BLUE, self),
-            Robot(0, 0, "A", RED, self),
-            Robot(0, 0, "B", BLUE, self),
+            Robot(0, 0, "A", RED, self, self.strategies[self.team_strategies["A"]]),  # Initial positions are placeholders, pass game instance
+            Robot(0, 0, "B", BLUE, self, self.strategies[self.team_strategies["B"]]),
+            Robot(0, 0, "A", RED, self, self.strategies[self.team_strategies["A"]]),
+            Robot(0, 0, "B", BLUE, self, self.strategies[self.team_strategies["B"]]),
         ]
+
+        #Team A's default
+        for robot in self.robots:
+            if robot.team == "A":
+                robot.color = RED
+
+        #Team B's default
+        for robot in self.robots:
+            if robot.team == "B":
+                robot.color = BLUE
+
+        #A note about which team does what - for the user.
+        print ("Team A (Red) always dribbles. Team B (Blue) will always shoot/pass. ")
 
         self.ball = Ball(PITCH_WIDTH // 2, PITCH_HEIGHT // 2)
         self.ball.vx = 0
@@ -290,7 +363,21 @@ class FootballGame:
         self.button_text = self.font.render("Place Ball", True, BUTTON_TEXT_COLOR)
         self.button_text_rect = self.button_text.get_rect(center=self.button_rect.center)
 
+        self.font_action = pygame.font.Font(None, int(20 * SCALE_FACTOR)) #Font for robot action.
         self.setup_initial_positions()
+
+    def change_strategy(self, team, strategy_name):
+        """Changes the strategy for a team."""
+        if strategy_name in self.strategies:
+            self.team_strategies[team] = strategy_name
+            # Update the strategy for all robots on that team
+            for robot in self.robots:
+                if robot.team == team:
+                    robot.strategy = self.strategies[strategy_name]
+            print(f"Team {team} strategy changed to {strategy_name}")
+        else:
+            print(f"Error: Strategy '{strategy_name}' not found.")
+
 
     def setup_initial_positions(self):
         font = pygame.font.Font(None, int(30 * SCALE_FACTOR))
@@ -393,6 +480,7 @@ class FootballGame:
             self.game_over = True
             self.winning_team = "A"  # Team A scored on Team B's goal
             return True
+
         return False
 
     def reposition_ball(self):
@@ -425,19 +513,20 @@ class FootballGame:
     def run(self):
         running = True
         dribbling_robot = None
-
+        team_a_actions = ["None"] * 2  # Two robots
+        team_b_actions = ["None"] * 2  # Two robots
+        # Main loop
         while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-
-                if event.type == pygame.MOUSEBUTTONDOWN: #Check clicks on manual intervention button!
+                if event.type == pygame.MOUSEBUTTONDOWN:  # Check clicks on manual intervention button!
                     if self.button_rect.collidepoint(event.pos):
                         self.manual_intervention = True
-                        self.paused = True #Pause game.
-                        self.reposition_ball() #Reposition the ball
-                        self.paused = False #Unpause game.
-                        self.manual_intervention = False #reset status
+                        self.paused = True  # Pause game.
+                        self.reposition_ball()  # Reposition the ball
+                        self.paused = False  # Unpause game.
+                        self.manual_intervention = False  # reset status
 
                 # Basic keyboard control for the first two robots.  Expand as needed.
                 if event.type == pygame.KEYDOWN:
@@ -458,4 +547,121 @@ class FootballGame:
                     if event.key == pygame.K_DOWN:  # Move robot 1 backward
                         self.robots[1].move(-math.cos(self.robots[1].angle), -math.sin(self.robots[1].angle))
                     if event.key == pygame.K_LEFT:  # Rotate robot 1 left
-                        
+                        self.robots[1].angle -= 0.1
+                    if event.key == pygame.K_RIGHT:  # Rotate robot 1 right
+                        self.robots[1].angle += 0.1
+                    if event.key == pygame.K_RETURN:
+                        self.robots[1].shoot(self.ball, 10 * SCALE_FACTOR)  # Shoot with power 10
+
+                    if event.key == pygame.K_r:  # Reposition ball
+                        self.paused = True
+                        self.reposition_ball()
+                        self.paused = False
+
+            if self.game_over:
+                continue  # Skip game logic if game is over
+
+            if self.paused:
+                continue  # Skip game logic if paused
+
+            # Robot movement (basic AI - replace with more sophisticated logic)
+            for i, robot in enumerate(self.robots):
+                # Make strategic decision (shoot or pass)
+                if robot.dribbling:  # Cannot act unless dribbling ball
+                    action = robot.make_strategic_decision()  # Get action state
+                    if action:  # If action state
+                        if action["action"] == "shoot":
+                            state = robot.shoot(self.ball, 10 * SCALE_FACTOR)  # Only execute after you shoot.
+                            if state:  # If there is a shooting.
+                                robot_action = "shooting"
+                        elif action["action"] == "move":
+                            if "parameters" in action:  # Check if parameters exist again
+                                robot.move(math.cos(action["parameters"]["angle"]), math.sin(action["parameters"]["angle"]))  # Move!
+                                robot_action = "moving"
+                        elif action["action"] == "pass":
+                            robot.shoot(self.ball, 5 * SCALE_FACTOR)
+                            robot_action = "passing"
+                else:
+                    # Always go for the ball unless doing something
+                    angle_to_ball = math.atan2(self.ball.y - robot.y, self.ball.x - robot.x)
+                    dist_to_ball = distance(robot.x, robot.y, self.ball.x, self.ball.y)
+
+                    if dist_to_ball > ROBOT_RADIUS + BALL_RADIUS:  # Is far from ball
+                        robot.move(math.cos(angle_to_ball), math.sin(angle_to_ball))  # Head to ball
+                    robot_action = "heading to ball"
+
+                # Set action message for the robot (This must be running regardless)
+                if robot.team == "A":
+                    team_a_actions[i % 2] = robot_action  # Store into A
+                else:
+                    team_b_actions[i % 2] = robot_action  # Store into B
+
+            # Dribbling logic:  One robot can dribbling_robot = None  # No robot is currently dribbling
+
+            # Ball movement
+            if not dribbling_robot:
+                self.ball.move()
+
+            # Collision detection and handling
+            self.handle_collisions()
+
+            # Check for goal
+            if self.check_goal():
+                print(f"Team {self.winning_team} wins!")
+                time.sleep(3)  # Display message for 3 seconds
+                running = False  # End the game loop
+                break
+
+            # Clear the screen
+            self.screen.fill(GREEN)  # Pitch color
+
+            #Draw UI here and then draw.
+
+            pygame.draw.rect(self.screen, UI_BACKGROUND, (0, 0, PITCH_WIDTH + UI_WIDTH, UI_HEIGHT)) #draw rectangle at the top of pitch
+
+            # Draw everything
+            self.ball.draw(self.screen)
+            for robot in self.robots:
+                robot.draw(self.screen)
+
+            # Draw the goalnets
+            self.goal_a.draw(self.screen)
+            self.goal_b.draw(self.screen)
+
+            #Draw button!
+            pygame.draw.rect(self.screen, BUTTON_COLOR, self.button_rect)
+            self.screen.blit(self.button_text, self.button_text_rect) # Blit text on the button
+
+            #Draw all text on the screen for UI:
+            team_a_text = self.font_action.render("Team A:", True, RED)
+            self.screen.blit(team_a_text, (10, 10))
+            a1_text = self.font_action.render(f"A1: {team_a_actions[0]}", True, RED)
+            self.screen.blit(a1_text, (10, 25))
+            a2_text = self.font_action.render(f"A2: {team_a_actions[1]}", True, RED)
+            self.screen.blit(a2_text, (10, 40))
+
+            team_b_text = self.font_action.render("Team B:", True, BLUE)
+            self.screen.blit(team_b_text, (PITCH_WIDTH / 2 +10, 10))  # Move further to right
+            b1_text = self.font_action.render(f"B1: {team_b_actions[0]}", True, BLUE)
+            self.screen.blit(b1_text, (PITCH_WIDTH / 2 +10, 25))  # Move further to right
+            b2_text = self.font_action.render(f"B2: {team_b_actions[1]}", True, BLUE)
+            self.screen.blit(b2_text, (PITCH_WIDTH / 2 +10, 40))  # Move further to right
+
+            # Display game over message if game is over
+            if self.game_over:
+                font = pygame.font.Font(None, int(50 * SCALE_FACTOR))  # Scaled font size
+                text = font.render(f"Team {self.winning_team} Wins!", True, YELLOW)
+                text_rect = text.get_rect(center=(PITCH_WIDTH // 2,  (PITCH_HEIGHT) + (UI_HEIGHT/2)) ) #use new height also!
+                self.screen.blit(text, text_rect)
+
+            # Update the display
+            pygame.display.flip()
+
+            # Limit frame rate
+            self.clock.tick(60)
+
+        pygame.quit()
+
+if __name__ == "__main__":
+    game = FootballGame()
+    game.run()
