@@ -4,7 +4,7 @@ import random
 import time
 from abc import ABC, abstractmethod
 
-# Constants (Same as before)
+# Constants (Same as before, adjust as needed)
 ORIGINAL_PITCH_WIDTH = 300
 ORIGINAL_PITCH_HEIGHT = 200
 SCALE_FACTOR = 3
@@ -42,6 +42,11 @@ BUTTON_X = PITCH_WIDTH - BUTTON_WIDTH - 10
 BUTTON_Y = 10
 BUTTON_COLOR = YELLOW
 BUTTON_TEXT_COLOR = BLACK
+# Role switch probabilities
+ROLE_SWITCH_PROBABILITY = 0.01  # Every frame.
+STRIKER_CHANCE = 0.4
+SUPPORTER_CHANCE = 0.3
+DEFENDER_CHANCE = 0.3
 
 
 def distance(x1, y1, x2, y2):
@@ -50,6 +55,47 @@ def distance(x1, y1, x2, y2):
 def angle_between_points(x1, y1, x2, y2):
     return math.atan2(y2 - y1, x2 - x1)
 
+# Define the states for each robot (implementing basic skill sequence)
+class RobotState(ABC):
+    @abstractmethod
+    def execute(self, robot, game, game_state):
+        pass
+
+class GetBall(RobotState):
+    def execute(self, robot, game, game_state):
+         angle_to_ball = angle_between_points(robot.x, robot.y, game_state["ball_x"], game_state["ball_y"])
+         dist_to_ball = distance(robot.x, robot.y, game_state["ball_x"], game_state["ball_y"])
+         if dist_to_ball > ROBOT_RADIUS + BALL_RADIUS:  # Is far from ball
+            return {"action": "move", "parameters": {"angle": angle_to_ball}} #Head to ball.
+
+class Dribble(RobotState): #Basic dribbling
+    def execute(self, robot, game, game_state):
+        opponent_goal_x = game_state["opponent_goal_x"]
+        opponent_goal_y = game_state["opponent_goal_y"]
+        angle_to_goal = angle_between_points(robot.x, robot.y, opponent_goal_x, opponent_goal_y)
+        return {"action": "move", "parameters": {"angle": angle_to_goal}}
+
+class SupportPosition(RobotState): #Basic Supporter position.
+    def execute(self, robot, game, game_state):
+        striker = None
+        closest = 9999999
+        for team_robot in game.robots: # find a striker
+            if team_robot.team == robot.team and team_robot.role == "striker" and team_robot != robot: # not itself
+                dist = distance (robot.x, robot.y, team_robot.x, team_robot.y) #find the distance between robot and any potential striker
+                if dist < closest:
+                    striker = team_robot #assign that robot!
+        if striker:
+            angle_to_position = angle_between_points(robot.x, robot.y, striker.x, striker.y) #Angle to that robot
+            return {"action": "move", "parameters": {"angle": angle_to_position}} #move!
+
+class DefendPosition(RobotState): #Basic defensive position
+    def execute(self, robot, game, game_state):
+        own_goal_x = game_state["own_goal_x"]
+        own_goal_y = game_state["own_goal_y"]
+
+        # Position yourself between the ball and your goal
+        angle_to_goal = angle_between_points(robot.x, robot.y, own_goal_x, own_goal_y)
+        return {"action": "move", "parameters": {"angle": angle_to_goal}}
 
 class Strategy(ABC):
     @abstractmethod
@@ -58,73 +104,18 @@ class Strategy(ABC):
 
 class RoleBasedStrategy(Strategy): #New Role Based Strategy!!
     def make_strategic_decision(self, robot, game, game_state):
-        if robot.role == "striker":
-            return self.striker_decision(robot, game, game_state)
-        elif robot.role == "supporter":
-            return self.supporter_decision(robot, game, game_state)
-        elif robot.role == "defender":
-            return self.defender_decision(robot, game, game_state)
-        else:
-            return {"action": "move", "parameters": {"angle": angle_between_points(robot.x, robot.y, game_state["ball_x"], game_state["ball_y"])}}  # Default: Go to ball
-
-    def striker_decision(self, robot, game, game_state):
-        opponent_goal_x = game_state["opponent_goal_x"]
-        opponent_goal_y = game_state["opponent_goal_y"]
-        angle_to_goal = angle_between_points(robot.x, robot.y, opponent_goal_x, opponent_goal_y)
-        dist_to_goal = distance(robot.x, robot.y, opponent_goal_x, opponent_goal_y)
-
-        # Check for passing opportunity if blocked
-        best_pass_target = self.find_best_pass(robot, game, game_state)
-        if best_pass_target and self.is_shot_blocked(robot, game_state):
-            return {"action": "pass", "parameters": {"target": best_pass_target}}
-
-        # Attempt to shoot if in range and not blocked (or has clear shot)
-        if dist_to_goal < AGGRESSIVE_SHOOT_RANGE or not self.is_shot_blocked(robot, game_state):
-             return {"action": "shoot", "parameters": {}} #shoot
-        # otherwise move!
-        return {"action": "move", "parameters": {"angle": angle_to_goal}}
-
-    def supporter_decision(self, robot, game, game_state):
-        # Stay in a good passing position, support the striker.
-        striker = self.find_closest_teammate_with_ball(robot, game)
-
-        if striker:
-            # Move to a position that is offset from the striker, creating a passing lane.
-            offset_distance = 2 * ROBOT_RADIUS  # Distance to keep away
-            angle_offset = math.pi / 4  # Offset angle (45 degrees)
-            offset_x = striker.x + offset_distance * math.cos(striker.angle + angle_offset)
-            offset_y = striker.y + offset_distance * math.sin(striker.angle + angle_offset)
-            angle_to_position = angle_between_points(robot.x, robot.y, offset_x, offset_y)
-
-            # If the supporter has the ball, consider passing or shooting
-            if distance(robot.x, robot.y, game_state["ball_x"], game_state["ball_y"]) < ROBOT_RADIUS + BALL_RADIUS:
-                best_pass_target = self.find_best_pass(robot, game, game_state)
-                if best_pass_target:
-                    return {"action": "pass", "parameters": {"target": best_pass_target}}
-                elif not self.is_shot_blocked(robot, game_state):
-                    return {"action": "shoot", "parameters": {}}  # Shoot if a pass isn't good and the shot is clear
-            return {"action": "move", "parameters": {"angle": angle_to_position}} #Otherwise move there
-        return {"action": "move", "parameters": {"angle": angle_between_points(robot.x, robot.y, game_state["ball_x"], game_state["ball_y"])}}  # Go to ball if no striker
-
-
-    def defender_decision(self, robot, game, game_state):
-        # Stay near own goal and block shots
-        own_goal_x = game_state["own_goal_x"]
-        own_goal_y = game_state["own_goal_y"]
-
-        # Position yourself between the ball and your goal
-        angle_to_goal = angle_between_points(robot.x, robot.y, own_goal_x, own_goal_y)
-        dist_to_goal = distance(robot.x, robot.y, own_goal_x, own_goal_y)
-        ball_distance_to_goal = distance(game_state["ball_x"], game_state["ball_y"], own_goal_x, own_goal_y)
-
-        #Defensive line, closer to goal if ball is close to goal.
-        defensive_line_distance = min(ROBOT_RADIUS * 5, ball_distance_to_goal - BALL_RADIUS * 2) #Cannot be too far from goal, or in own goal.
-
-        defensive_x = own_goal_x + defensive_line_distance * math.cos(angle_to_goal)
-        defensive_y = own_goal_y + defensive_line_distance * math.sin(angle_to_goal)
-
-        angle_to_defensive_position = angle_between_points(robot.x, robot.y, defensive_x, defensive_y)
-        return {"action": "move", "parameters": {"angle": angle_to_defensive_position}} #move there
+        #Basic team strategy = if robot has access to the ball, then start dribbling.
+        if distance(robot.x, robot.y, game_state["ball_x"], game_state["ball_y"]) < ROBOT_RADIUS + BALL_RADIUS:
+            return Dribble().execute(robot, game, game_state) #dribble
+        else: #Otherwise fall back on various robot states
+            if robot.role == "striker":
+                return GetBall().execute(robot, game, game_state) # get the ball
+            elif robot.role == "supporter":
+                return SupportPosition().execute(robot, game, game_state) # support
+            elif robot.role == "defender":
+                return DefendPosition().execute(robot, game, game_state) # defend.
+            else:
+                return GetBall().execute(robot, game, game_state) # Get the ball if no role
 
     def find_best_pass(self, robot, game, game_state):
         # Find the best teammate to pass to
@@ -139,7 +130,6 @@ class RoleBasedStrategy(Strategy): #New Role Based Strategy!!
                     #best_angle = angle
                     break #Return first available
         return best_teammate #Returns the best teammate
-
 
     def is_shot_blocked(self, robot, game_state):
         # Check if the shot to the opponent's goal is blocked by an opponent robot
@@ -192,6 +182,7 @@ class Robot:
         self.role = "attacker"  # Default role
         self.strategy = strategy
         self.current_action = "idle"
+        self.state = GetBall() #Set the new state!
 
     def move(self, dx, dy):
         magnitude = math.sqrt(dx**2 + dy**2)
@@ -225,7 +216,7 @@ class Robot:
             ball.vx = 0
             ball.vy = 0
             ball.x = self.x + self.mouth_offset * math.cos(self.angle)
-            ball.y = self.x + self.mouth_offset * math.sin(self.angle) #typo here
+            self.y = self.y + self.mouth_offset * math.sin(self.angle)
             return True
         else:
             self.dribbling = False
@@ -287,7 +278,8 @@ class Robot:
             "opponent_goal_x": self.game.goal_b.x + self.game.goal_b.width / 2 if self.team == "A" else self.game.goal_a.x + self.game.goal_a.width / 2,
             "opponent_goal_y": self.game.goal_b.y + self.game.goal_b.height / 2 if self.team == "A" else self.game.goal_a.y + self.game.goal_a.height / 2,
             "pitch_width": PITCH_WIDTH,
-            "pitch_height": PITCH_HEIGHT
+            "pitch_height": PITCH_HEIGHT,
+            "distance_to_ball": distance(self.x, self.y, self.game.ball.x, self.game.ball.y)
         }
         return game_state
 
@@ -295,48 +287,20 @@ class Robot:
         game_state = self.get_game_state()
         action = self.strategy.make_strategic_decision(self, self.game, game_state)
         if action is None:
-            return
-
-        if self.dribbling:
-            if isinstance(action, dict) and "action" in action:  #Check that action is DICT and key "action" is in action, otherwise it's none!
-                if action["action"] == "move":
-                    self.current_action = "moving"
-                    self.move(math.cos(action["parameters"]["angle"]), math.sin(action["parameters"]["angle"]))
-                elif action["action"] == "shoot":
-                    state = self.shoot(self.game.ball, 10 * SCALE_FACTOR)
-                    if state:
-                        self.current_action = "shooting"
-                elif action["action"] == "pass":
-                    target = action["parameters"]["target"]
-                    if target: # Check there IS a target to pass to.
-                        angle = angle_between_points(self.x, self.y, target.x, target.y)
-                        self.angle = angle
-                        state = self.shoot(self.game.ball, 5 * SCALE_FACTOR)
-                        if state:
-                            self.current_action = "passing"
-                    else:
-                        self.current_action = "no pass target"
-                else:
-                    self.current_action = "idle" # If no action, do nothing
-
-        else:
-            if isinstance(action, dict) and "action" in action: # Check if action is DICT and key "action" is in action, otherwise it's none!
-                if action["action"] == "move":
-                    if "parameters" in action:  # Check if parameters exist
-                        self.move(math.cos(action["parameters"]["angle"]), math.sin(action["parameters"]["angle"]))
-                        self.current_action = "moving"
-                        return self.current_action
-                else:
-                    self.current_action = "idle" #If anything else like "shoot", set it as IDLE as it's doing nothing!
-
-            # Go for ball if no specific action is given.
+            #If I don't have an action, I'm still going for the ball!
             angle_to_ball = math.atan2(self.game.ball.y - self.y, self.game.ball.x - self.x)
             dist_to_ball = distance(self.x, self.y, self.game.ball.x, self.game.ball.y)
             if dist_to_ball > ROBOT_RADIUS + BALL_RADIUS:  # Is far from ball
                 self.move(math.cos(angle_to_ball), math.sin(angle_to_ball))  # Head to ball
             self.current_action = "heading to ball"
+            return
 
-        return self.current_action
+        if self.dribbling:
+            self.current_action = "dribbling"
+            return Dribble().execute(self, self.game, game_state) #Dribble
+        else:
+            self.current_action = "default role decision"
+            return action #Do the default role.
 
 class Ball: #unchanged
     def __init__(self, x, y):
@@ -466,15 +430,19 @@ class FootballGame: #Main game loop
         self.setup_initial_positions()
 
     def assign_roles(self):
-        #Assign roles to robots
+        #Assign roles to robots based on a random probability distribution
         for team in ["A", "B"]:
             team_robots = [robot for robot in self.robots if robot.team == team]
-            random.shuffle(team_robots)  #Randomize the list
 
-            #Assign 1 striker, 1 supporter, 1 defender (Can change as needed)
-            team_robots[0].role = "striker"
-            team_robots[1].role = "supporter"
-            team_robots[2].role = "defender"
+            if len(team_robots) >= 3: #Check that the numbers add up
+                 random.shuffle(team_robots)  #Shuffle those robots
+
+                 #Assign 1 striker, 1 supporter, 1 defender (Can change as needed)
+                 team_robots[0].role = "striker"
+                 team_robots[1].role = "supporter"
+                 team_robots[2].role = "defender"
+            else:
+                print ("ERROR: Number of robots does not match number of roles. ")
 
     def change_strategy(self, team, strategy_name): #Removed, not needed
         pass
@@ -497,8 +465,8 @@ class FootballGame: #Main game loop
                         pygame.quit()
                         exit()  # Exit the program
                     if event.type == pygame.MOUSEBUTTONDOWN:
-                        x, y = event.pos
-                        # Ensure robot is placed within bounds
+                        x = event.pos[0]  # Get x-coordinate
+                        y = event.pos[1]  # Get y-coordinate
                         if ROBOT_RADIUS <= x <= PITCH_WIDTH - ROBOT_RADIUS and ROBOT_RADIUS <= y <= PITCH_HEIGHT - ROBOT_RADIUS:
                             self.robots[robot_index].x = x
                             self.robots[robot_index].y = y
@@ -522,7 +490,8 @@ class FootballGame: #Main game loop
                     pygame.quit()
                     exit()
                 if event.type == pygame.MOUSEBUTTONDOWN:
-                    x, y = event.pos
+                    x = event.pos[0]  # Get x-coordinate
+                    y = event.pos[1]  # Get y-coordinate
                     if BALL_RADIUS <= x <= PITCH_WIDTH - BALL_RADIUS and BALL_RADIUS <= y <= PITCH_HEIGHT - BALL_RADIUS:
                         self.ball.x = x
                         self.ball.y = y
@@ -600,7 +569,8 @@ class FootballGame: #Main game loop
                     pygame.quit()
                     exit()
                 if event.type == pygame.MOUSEBUTTONDOWN:
-                    x, y = event.pos
+                    x = event.pos[0]  # Get x-coordinate
+                    y = event.pos[1]  # Get y-coordinate
                     if BALL_RADIUS <= x <= PITCH_WIDTH - BALL_RADIUS and BALL_RADIUS <= y <= PITCH_HEIGHT - BALL_RADIUS:
                         self.ball.x = x
                         self.ball.y = y
@@ -646,49 +616,23 @@ class FootballGame: #Main game loop
             for i, robot in enumerate(self.robots):
                 robot_action = "idle"  # Default action
 
+                # Dynamic Role Assignment (Probability-based)
+                #This code was removed.
+                #if random.random() < ROLE_SWITCH_PROBABILITY:
+                    #self.assign_roles()  # Randomize roles
+
                 # Make strategic decision (shoot or pass)
                 if robot.dribbling:  # Cannot act unless dribbling ball
-                    action = robot.make_strategic_decision()  # Get action state
-                    if isinstance(action, dict) and action is not None and "action" in action:  # If action state
-                        if action["action"] == "shoot":
-                            state = robot.shoot(self.ball, 10 * SCALE_FACTOR)  # Only execute after you shoot.
-                            if state:  # If there is a shooting.
-                                robot_action = "shooting"
-                        elif action["action"] == "move":
-                            if "parameters" in action:  # Check if parameters exist again
-                                robot.move(math.cos(action["parameters"]["angle"]), math.sin(action["parameters"]["angle"]))  # Move!
-                                robot_action = "moving"
-                        elif action["action"] == "pass":
-                            target = action["parameters"]["target"] # get the target teammate from action
-                            if target:
-                                angle = angle_between_points(robot.x, robot.y, target.x, target.y) #Angle to that robot
-                                robot.angle = angle #turn to that robot.
-                                state = robot.shoot(self.ball, 5 * SCALE_FACTOR) #SHOOT at that angle
-                                if state:
-                                    robot_action = "passing"
-                            else:
-                                robot_action = "no pass target" #passing with no target
-                        else:
-                            robot_action = "idle" #unspecified action with the ball
-                    else:
-                        robot_action = "thinking..." #Still has ball but no longer has an action
-
+                    robot_action = "dribbling" #Dribble
                 else:
                     action = robot.make_strategic_decision()  # Get action state
-
-                    if isinstance(action, dict) and action is not None and "action" in action:  # If action state
+                    if isinstance(action, dict) and action is not None and "action" in action:  # If action is a Dict, Not None and has 'action' key
                         if action["action"] == "move":
-                            if "parameters" in action:  # Check if parameters exist again
+                            if "parameters" in action:  # Check if parameters exist
                                 robot.move(math.cos(action["parameters"]["angle"]), math.sin(action["parameters"]["angle"]))  # Move!
                                 robot_action = "moving"
                         else: #If anything else like "shoot", set it as IDLE as it's doing nothing!
-                            robot_action = "idle"
-                    else: #Go to ball if no specific action is given.
-                        angle_to_ball = math.atan2(self.ball.y - robot.y, self.ball.x - robot.x)
-                        dist_to_ball = distance(robot.x, robot.y, self.ball.x, self.ball.y)
-                        if dist_to_ball > ROBOT_RADIUS + BALL_RADIUS:  # Is far from ball
-                            robot.move(math.cos(angle_to_ball), math.sin(angle_to_ball))  # Head to ball
-                        robot_action = "heading to ball"
+                            robot_action = "role positioning" #default to base role.
 
                 # Set action message for the robot (This must be running regardless)
                 if robot.team == "A":
