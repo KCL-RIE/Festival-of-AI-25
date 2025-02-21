@@ -18,16 +18,12 @@
             <div class="container-game-log">
                 <div class="container-game">
                     <div class="field" ref="field">
-                        <div
-                            v-for="(logPlayer, index) in players"
-                            :key="index"
-                            class="ball"
-                            :style="{
-                                backgroundColor: getBallColour(logPlayer),
-                                position: 'absolute',
-                                left: getBallPosition(logPlayer).x + 'px',
-                                top: getBallPosition(logPlayer).y + 'px',
-                            }">
+                        <div v-for="(logPlayer, index) in players" :key="index" class="ball" :style="{
+                            backgroundColor: getBallColour(logPlayer),
+                            position: 'absolute',
+                            left: getBallPosition(logPlayer).x + 'px',
+                            top: getBallPosition(logPlayer).y + 'px',
+                        }">
                         </div>
                     </div>
 
@@ -36,9 +32,9 @@
                 </div>
                 <div class="container-log">
                     <div v-for="(logItem, index) in logs" :key="index" class="log">
-                        <div class="log-colour"
-                            :style="getLogColour(logItem)">
-                        </div>
+                        <!-- <div class="log-colour" '></div> -->
+                        <div class="w-8 h-8 rounded-full mx-4 self-center" :style='getLogColour(logItem)'></div>
+
                         <div class="log-info">
                             <div class="info-player">
                                 {{ logItem.player }}
@@ -87,10 +83,10 @@ export default {
             ],
 
             players: [
-                { player: "Player 1", x: 100, y: 200},
-                { player: "Player 2", x: 200, y: 250},
-                { player: "AI 1", x: 300, y: 150},
-                { player: "AI 2", x: 400, y: 300},
+                { player: "Player 1", x: 100, y: 200 },
+                { player: "Player 2", x: 200, y: 250 },
+                { player: "AI 1", x: 300, y: 150 },
+                { player: "AI 2", x: 400, y: 300 },
             ],
         };
     },
@@ -117,7 +113,7 @@ export default {
                 "AI 2": "#06ffff",
             };
 
-            return { backgroundColor: colorMap[logItem.player]}
+            return { backgroundColor: colorMap[logItem.player] }
         },
 
         getBallColour(logPlayer) {
@@ -147,7 +143,7 @@ export default {
         startCountdown() {
             let countDown = setInterval(() => {
                 this.time--;
-                if(this.time == 0) {
+                if (this.time == 0) {
                     clearInterval(countDown);
                 }
             }, 1000);
@@ -168,7 +164,7 @@ export default {
     background-color: #3c6c26;
     font-family: 'BlackOpsOne-Regular';
     color: white;
-    background-image: url(/sidepannel.png);
+    /* background-image: url(/sidepannel.png); */
     background-size: contain;
 }
 
@@ -275,7 +271,7 @@ export default {
     margin-left: 2%;
     background-image: url(/frame-player.png);
     background-size: contain;
-    background-repeat: no-repeat;  
+    background-repeat: no-repeat;
     justify-self: center;
     justify-content: center;
     flex-wrap: wrap;
@@ -326,7 +322,6 @@ export default {
 .info-description {
     font-family: Arial, Helvetica, sans-serif;
 }
-
 </style>
 
 
