@@ -30,9 +30,10 @@
                     <div class="container-player">
                     </div>
                 </div>
-                <div class="container-log">
+                <div
+                    class="flex flex-col flex-grow rounded-3xl bg-green-600 ml-3 mr-1 h-[85vh] text-black overflow-y-scroll scrollbar-hidden">
+
                     <div v-for="(logItem, index) in logs" :key="index" class="log">
-                        <!-- <div class="log-colour" '></div> -->
                         <div class="w-8 h-8 rounded-full mx-4 self-center" :style='getLogColour(logItem)'></div>
 
                         <div class="log-info">
@@ -277,17 +278,8 @@ export default {
     flex-wrap: wrap;
 }
 
-.container-log {
-    display: flex;
-    flex-direction: column;
-    flex-grow: 3;
-    border-radius: 30px;
-    background-color: #61a541;
-    margin-left: 3%;
-    margin-right: 1%;
-    height: 85vh;
-    color: black;
-    overflow-y: scroll;
+.scrollbar-hidden::-webkit-scrollbar {
+    display: none;
 }
 
 .log {

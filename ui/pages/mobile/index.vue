@@ -49,7 +49,7 @@ export default {
     },
     mounted() {
 
-        this.socket = new WebSocket((process.env.NODE_ENV === "development" ? "ws://127.0.0.1:8000" : "wss://your-production-url") + "/ws/mobile");
+        this.socket = new WebSocket((process.env.NODE_ENV === "development" ? "ws://127.0.0.1:8001" : "wss://your-production-url") + "/ws/mobile");
 
         this.socket.onopen = () => {
             console.log('Connected to websocket');
