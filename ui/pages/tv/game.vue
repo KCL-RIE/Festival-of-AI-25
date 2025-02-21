@@ -3,7 +3,7 @@
         <div class="container-screen">
             <div class="game-nav-bar">
                 <div class="quit-button">
-
+                    X
                 </div>
                 <div class="score-board">
                     {{ human_score }} : {{ rie_score }}
@@ -68,6 +68,22 @@ export default {
                 { player: "Player 2", msg: "Foul by Player 2" },
                 { player: "AI 1", msg: "Goal scored by Player 3" },
                 { player: "AI 2", msg: "Goal scored by Player 3" },
+                { player: "Player 1", msg: "Goal scored by Player 1" },
+                { player: "Player 2", msg: "Foul by Player 2" },
+                { player: "AI 1", msg: "Goal scored by Player 3" },
+                { player: "AI 2", msg: "Goal scored by Player 3" },
+                { player: "Player 1", msg: "Goal scored by Player 1" },
+                { player: "Player 2", msg: "Foul by Player 2" },
+                { player: "AI 1", msg: "Goal scored by Player 3" },
+                { player: "AI 2", msg: "Goal scored by Player 3" },
+                { player: "Player 1", msg: "Goal scored by Player 1" },
+                { player: "Player 2", msg: "Foul by Player 2" },
+                { player: "AI 1", msg: "Goal scored by Player 3" },
+                { player: "AI 2", msg: "Goal scored by Player 3" },
+                { player: "Player 1", msg: "Goal scored by Player 1" },
+                { player: "Player 2", msg: "Foul by Player 2" },
+                { player: "AI 1", msg: "Goal scored by Player 3" },
+                { player: "AI 2", msg: "Goal scored by Player 3" },
             ],
 
             players: [
@@ -80,6 +96,8 @@ export default {
     },
 
     mounted() {
+        this.startCountdown();
+
         this.$nextTick(() => {
             const field = this.$refs.field;
             if (field) {
@@ -94,7 +112,7 @@ export default {
         getLogColour(logItem) {
             const colorMap = {
                 "Player 1": "#ff5959",
-                "Player 2": "#fefe49",
+                "Player 2": "#fefe39",
                 "AI 1": "#484848",
                 "AI 2": "#06ffff",
             };
@@ -124,6 +142,15 @@ export default {
 
             console.log("Player Position: ", x, y);
             return { x, y };
+        },
+
+        startCountdown() {
+            let countDown = setInterval(() => {
+                this.time--;
+                if(this.time == 0) {
+                    clearInterval(countDown);
+                }
+            }, 1000);
         },
     },
 };
@@ -164,14 +191,15 @@ export default {
 
 .quit-button {
     display: float;
-    background-color: white;
-    width: 20pt;
-    height: 20pt;
+    width: 5%;
+    height: 10%;
+    font-size: clamp(10pt, 4vw, 30pt);
+    margin-top: 1.5%;
 }
 
 .score-board {
     display: flex;
-    flex-grow: 13;
+    flex-grow: 7.5;
     justify-content: center;
     font-size: clamp(10pt, 4vw, 48pt);
 }
@@ -261,13 +289,14 @@ export default {
     background-color: #61a541;
     margin-left: 3%;
     margin-right: 1%;
-    height: 92%;
+    height: 85vh;
     color: black;
+    overflow-y: scroll;
 }
 
 .log {
     display: flex;
-    height: 8%;
+    height: 11vh;
     border-radius: 30px;
     background-color: #ffffff;
     margin-bottom: 3%;
@@ -290,10 +319,13 @@ export default {
     display: flex;
     flex-direction: column;
     flex-grow: 5;
-    justify-content: center;
+    justify-content: left;
+    padding: 0%;
 }
 
-
+.info-description {
+    font-family: Arial, Helvetica, sans-serif;
+}
 
 </style>
 
