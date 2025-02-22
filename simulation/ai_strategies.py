@@ -3,6 +3,8 @@ from abc import ABC, abstractmethod
 import math
 import random
 from constants import * # Import constants and functions
+from scipy.optimize import linear_sum_assignment # Hungarian Algorithm
+import numpy as np
 
 class Strategy(ABC):
     @abstractmethod
@@ -200,3 +202,129 @@ class LayeredCapabilitiesStrategy(Strategy): # Renamed and Refactored Strategy
                     min_distance = dist_to_ball
                     closest_teammate = teammate
         return closest_teammate
+
+#####################################################################################
+#####################################################################################
+
+class DynamicRoleStrategy(Strategy):
+    def __init__(self):
+        self.last_role_assignment = {} # To track previous roles for stability
+
+    def make_strategic_decision(self, robot, game, game_state):
+        team_robots = [r for r in game.robots if r.team == robot.team]
+        roles = ["striker", "supporter", "defender", "goalkeeper"]
+
+        # Re-assign roles periodically (e.g., every 2 seconds - adjust as needed)
+        if game.game_time % 2.0 == 0: # Check game time in seconds
+            self.assign_roles_hungarian(team_robots, roles, game, game_state)
+
+        # Execute role-specific behavior (using LayeredCapabilitiesStrategy's logic for now)
+        if robot.role == "striker":
+            return LayeredCapabilitiesStrategy().striker_decision(robot, game, game_state) # Reuse LayeredCapabilities logic
+        elif robot.role == "supporter":
+            return LayeredCapabilitiesStrategy().supporter_decision(robot, game, game_state)
+        elif robot.role == "defender":
+            return LayeredCapabilitiesStrategy().defender_decision(robot, game, game_state)
+        elif robot.role == "goalkeeper":
+            return LayeredCapabilitiesStrategy().goalkeeper_decision(robot, game, game_state)
+        else:
+            return LayeredCapabilitiesStrategy().default_decision(robot, game, game_state)
+
+    def assign_roles_hungarian(self, robots, roles, game, game_state):
+        num_robots = len(robots)
+        num_roles = len(roles)
+
+        if num_robots != num_roles: # Basic check, adjust if you want more/fewer robots than roles
+            print("Error: Number of robots must match number of roles for DynamicRoleStrategy (currently assuming 4 robots, 4 roles).")
+            return
+
+        cost_matrix = np.zeros((num_robots, num_roles))
+
+        for i, robot in enumerate(robots):
+            for j, role in enumerate(roles):
+                cost_matrix[i, j] = self.calculate_role_cost(robot, role, game, game_state)
+
+        robot_indices, role_indices = linear_sum_assignment(cost_matrix) # Hungarian Algorithm
+
+        new_role_assignment = {}
+        for robot_index, role_index in zip(robot_indices, role_indices):
+            robot_id = robots[robot_index].robot_id
+            assigned_role = roles[role_index]
+            robots[robot_index].role = assigned_role # Assign the role to the robot
+            new_role_assignment[robot_id] = assigned_role
+
+        # Role Stability (optional - can be adjusted or removed)
+        for robot in robots:
+            last_role = self.last_role_assignment.get(robot.robot_id)
+            if last_role and last_role != robot.role:
+                print(f"Robot {robot.robot_id} role changed from {last_role} to {robot.role}")
+        self.last_role_assignment = new_role_assignment # Update last assignment
+
+
+    def calculate_role_cost(self, robot, role, game, game_state):
+        cost = 0
+
+        if role == "striker":
+            # Lower cost if robot is closer to the ball and opponent goal, higher cost otherwise
+            dist_to_ball_cost = distance(robot.x, robot.y, game_state["ball_x"], game_state["ball_y"])
+            pos_x_normalized = robot.x / game_state["pitch_width"]
+            goal_proximity_benefit =  pos_x_normalized if robot.team == "B" else (1-pos_x_normalized) # Higher x for Team B, lower for Team A is closer to goal
+            cost = dist_to_ball_cost - (goal_proximity_benefit * 100) # Subtract benefit to reduce cost for good striker positions
+
+        elif role == "supporter":
+            # Moderate distance to ball, closer to striker, in open space
+            dist_to_ball_cost = distance(robot.x, robot.y, game_state["ball_x"], game_state["ball_y"])
+            striker = self.get_closest_teammate_with_role(robot, game, "striker")
+            dist_to_striker_cost = distance(robot.x, robot.y, striker.x, striker.y) if striker else 0 # If no striker, cost is higher
+            opponent_proximity_cost = self.get_closest_opponent_distance(robot, game_state) # Higher cost if near opponents
+
+            cost = dist_to_ball_cost * 0.5 + dist_to_striker_cost + opponent_proximity_cost * 2 # Weighted costs
+
+        elif role == "defender":
+            # Closer to own goal, further from opponent goal, maybe intercept ball path
+            dist_to_own_goal_cost = distance(robot.x, robot.y, game_state["own_goal_x"], game_state["own_goal_y"])
+            opponent_goal_proximity_cost = distance(robot.x, robot.y, game_state["opponent_goal_x"], game_state["opponent_goal_y"])
+            ball_proximity_benefit = 0 #distance(robot.x, robot.y, game_state["ball_x"], game_state["ball_y"]) # Benefit if close to ball in own half?
+
+            cost = dist_to_own_goal_cost * 0.8 - (opponent_goal_proximity_cost * 0.2) - (ball_proximity_benefit * 0.1) # Favor own goal proximity, penalize opponent goal proximity
+
+        elif role == "goalkeeper":
+            # Close to own goal, aligned with ball Y position
+            dist_to_goal_x_cost = abs(robot.x - game_state["own_goal_x"]) # X position to goal line
+            dist_to_ball_y_cost = abs(robot.y - game_state["ball_y"]) * 0.7 # Y position to ball Y (weighted less)
+
+            cost = dist_to_goal_x_cost * 2 + dist_to_ball_y_cost # Prioritize X position, then Y alignment
+
+        # Role Stability - Add a small penalty for changing roles (optional)
+        last_role = self.last_role_assignment.get(robot.robot_id)
+        if last_role == role:
+            cost -= 5  # Small negative cost (benefit) for staying in the same role
+
+        return cost
+
+    def get_closest_teammate_with_role(self, robot, game, target_role):
+        closest_teammate = None
+        min_distance = float('inf')
+        for teammate in game.robots:
+            if teammate.team == robot.team and teammate != robot and teammate.role == target_role:
+                dist = distance(robot.x, robot.y, teammate.x, teammate.y)
+                if dist < min_distance:
+                    min_distance = dist
+                    closest_teammate = teammate
+        return closest_teammate
+
+    def get_closest_opponent_distance(self, robot, game_state):
+        min_distance = float('inf')
+        for opponent in game_state["opponent_robots"]:
+            dist = distance(robot.x, robot.y, opponent["x"], opponent["y"])
+            min_distance = min(min_distance, dist)
+        return min_distance
+
+#####################################################################################
+#####################################################################################
+
+# SimpleGoToBallStrategy (keep this for testing/comparison)
+class SimpleGoToBallStrategy(Strategy):
+    def make_strategic_decision(self, robot, game, game_state):
+        angle_to_ball = angle_between_points(robot.x, robot.y, game_state["ball_x"], game_state["ball_y"])
+        return {"action": "move", "parameters": {"angle": angle_to_ball}, "state_description": "SimpleGoToBall - Always moving towards ball"}
