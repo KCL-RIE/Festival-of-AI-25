@@ -5,7 +5,8 @@ import math
 import random
 import time
 from abc import ABC, abstractmethod
-from ai_strategies import LayeredCapabilitiesStrategy, Strategy # Import Strategy classes
+from ai_strategies import LayeredCapabilitiesStrategy, Strategy, DynamicRoleStrategy, SimpleGoToBallStrategy
+
 
 class Robot:
     def __init__(self, robot_id, x, y, team, color, game, strategy_class): # Pass strategy_class
@@ -267,6 +268,9 @@ class FootballGame:
         pygame.display.set_caption("Robot Football")
         self.clock = pygame.time.Clock()
 
+        # Initialize game time
+        self.game_time = 0.0
+
         # Define pitch regions
         self.pitch_regions = {}
         self._define_pitch_regions()
@@ -278,12 +282,14 @@ class FootballGame:
 
         # Define available strategies (now just strategy classes, not instances)
         self.strategies = {
-            "LayeredCapabilities": LayeredCapabilitiesStrategy # Pass the class itself
+            "LayeredCapabilities": LayeredCapabilitiesStrategy,
+            "SimpleGoToBall": SimpleGoToBallStrategy,
+            "DynamicRole": DynamicRoleStrategy,
         }
 
         self.team_strategies = {
             "A": "LayeredCapabilities",
-            "B": "LayeredCapabilities"
+            "B": "DynamicRole"
         }
 
         # Initialize robots - NOW 4 ROBOTS PER TEAM!
@@ -658,6 +664,7 @@ class FootballGame:
                 self.screen.blit(text, text_rect)
 
             pygame.display.flip()
+            self.game_time += DT # Increment game time
             self.clock.tick(60)
 
         pygame.quit()
