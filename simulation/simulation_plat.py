@@ -454,12 +454,22 @@ class FootballGame:
         self.ball.vy = 0
 
         # Initialize goalnets - GOALNETS NOW VERTICAL LINES IN CENTRE OF GOAL REGIONS
-        region_4_rect = self.pitch_regions[4]
-        region_8_rect = self.pitch_regions[8]
-        region_7_rect = self.pitch_regions[7]
-        region_11_rect = self.pitch_regions[11]
-        self.goal_a = GoalNet((region_4_rect.left+region_8_rect.left)/2, (region_4_rect.centery+region_8_rect.centery)/2, "A") # Team A Goal is centered between regions 4 and 8 - CORRECTED VERTICAL PLACEMENT! - VERTICALLY CENTERED!
-        self.goal_b = GoalNet((region_7_rect.right+region_11_rect.right)/2, (region_7_rect.centery+region_11_rect.centery)/2, "B") # Team B Goal is centered between regions 7 and 11 - CORRECTED VERTICAL PLACEMENT! - VERTICALLY CENTERED!
+        # Corrected GoalNet positions for 5x5 grid - using regions at the edges.
+        region_goal_a_left = self.pitch_regions[0]  # Region 0 is at the leftmost edge
+        region_goal_a_right = self.pitch_regions[5] # Region 5 is also at the leftmost edge, below region 0
+        region_goal_b_left = self.pitch_regions[4]  # Region 4 is at the rightmost edge
+        region_goal_b_right = self.pitch_regions[9] # Region 9 is also at the rightmost edge, below region 4
+
+        # Goal A (left side) is positioned at the left edge of the pitch.
+        # X-coordinate is set to the left edge of region_goal_a_left.
+        # Y-coordinate is now set to the vertical center of the pitch (PITCH_HEIGHT / 2).
+        self.goal_a = GoalNet(region_goal_a_left.left, PITCH_HEIGHT / 2, "A") # Vertical center of pitch
+
+        # Goal B (right side) is positioned at the right edge of the pitch.
+        # X-coordinate is set to the right edge of region_goal_b_right.
+        # Y-coordinate is now set to the vertical center of the pitch (PITCH_HEIGHT / 2).
+        self.goal_b = GoalNet(region_goal_b_right.right, PITCH_HEIGHT / 2, "B") # Vertical center of pitch
+
         self.goals = [self.goal_a, self.goal_b]
 
         self.game_over = False
@@ -477,8 +487,8 @@ class FootballGame:
         self.setup_initial_positions()
 
     def _define_pitch_regions(self):
-        num_regions_x = 4
-        num_regions_y = 4
+        num_regions_x = 5 # Changed to 5
+        num_regions_y = 5 # Changed to 5
 
         region_width = PITCH_WIDTH / num_regions_x
         region_height = PITCH_HEIGHT / num_regions_y
@@ -494,27 +504,31 @@ class FootballGame:
                 self.pitch_regions[region_id_counter] = region_rect
                 region_id_counter += 1
 
+        # region_id_map might need to be reviewed or updated if it's actually used for something.
+        # Currently it seems unused in the provided logic.
         self.region_id_map = {
-            15: 0, 12: 1, 9: 2, 6: 3,
-            16: 4, 13: 5, 10: 6, 7: 7,
-            17: 8, 14: 9, 11: 10, 8: 11,
-            0: 12, 3: 13, 4: 14, 5: 15,
-            1: 16, 2: 17
+            15: 0, 12: 1, 9: 2, 6: 3, # Example from 4x4 grid, might not be relevant for 5x5
+            16: 4, 13: 5, 10: 6, 7: 7, # Example from 4x4 grid, might not be relevant for 5x5
+            17: 8, 14: 9, 11: 10, 8: 11, # Example from 4x4 grid, might not be relevant for 5x5
+            0: 12, 3: 13, 4: 14, 5: 15, # Example from 4x4 grid, might not be relevant for 5x5
+            1: 16, 2: 17 # Example from 4x4 grid, might not be relevant for 5x5
         }
 
     def _define_formations(self):
+        # Formations are defined using region IDs.
+        # Make sure the region IDs used here are valid for the 5x5 grid (0 to 24).
         self.formations = {
             "attack": {
-                "striker": [14, 15, 16, 17],
-                "supporter": [9, 10, 11, 12, 13],
-                "defender": [4, 5, 6, 7, 8],
-                "goalkeeper": [0, 1, 2, 3],
+                "striker": [22, 23, 24, 21, 20], # Example regions for striker in 5x5 grid
+                "supporter": [17, 18, 19, 16, 15, 10, 11, 12], # Example regions for supporter in 5x5 grid
+                "defender": [5, 6, 7, 8, 9, 0, 1, 2, 3, 4], # Example regions for defender in 5x5 grid
+                "goalkeeper": [0, 1, 2, 3, 4], # Example regions for goalkeeper in 5x5 grid
             },
             "defense": {
-                "striker": [9, 10],
-                "supporter": [4, 5, 6, 7],
-                "defender": [0, 1, 2, 3],
-                "goalkeeper": [0, 1, 2, 3],
+                "striker": [17, 18, 19], # Example regions for striker in 5x5 grid
+                "supporter": [12, 13, 14, 15, 16], # Example regions for supporter in 5x5 grid
+                "defender": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], # Example regions for defender in 5x5 grid
+                "goalkeeper": [0, 1, 2, 3, 4], # Example regions for goalkeeper in 5x5 grid
             }
         }
 
