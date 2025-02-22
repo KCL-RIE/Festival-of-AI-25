@@ -43,6 +43,7 @@ ROLE_SWITCH_PROBABILITY = 0.01
 STRIKER_CHANCE = 0.4
 SUPPORTER_CHANCE = 0.3
 DEFENDER_CHANCE = 0.3
+GOALKEEPER_CHANCE = 0.1 # New Goalkeeper Role
 
 
 def distance(x1, y1, x2, y2):
@@ -105,8 +106,7 @@ class DefendPosition(RobotState):
         own_goal_y = game_state["own_goal_y"]
 
         defend_pos_x = (ball_x + own_goal_x) / 2
-        defend_pos_y = (ball_y + own_goal_y) / 2
-
+        defend_pos_y = game_state["own_goal_y"]
         offset_dist = 2 * ROBOT_RADIUS
         angle_to_goal = angle_between_points(ball_x, ball_y, own_goal_x, own_goal_y)
         defend_pos_x += offset_dist * math.cos(angle_to_goal + math.pi)
@@ -114,6 +114,19 @@ class DefendPosition(RobotState):
 
         goal_x, goal_y = defend_pos_x, defend_pos_y
         return {"action": "move", "parameters": {"angle": angle_between_points(robot.x, robot.y, goal_x, goal_y)}}
+
+class GoalkeeperPosition(RobotState): # NEW Goalkeeper State
+    def execute(self, robot, game, game_state):
+        own_goal_x = game_state["own_goal_x"]
+        own_goal_y = game_state["own_goal_y"]
+        ball_y = game_state["ball_y"]
+
+        # Goalkeeper tries to stay on the goal line, horizontally aligned with the ball
+        goal_x = own_goal_x
+        goal_y = max(GOAL_DEPTH / 2 + ROBOT_RADIUS, min(ball_y, PITCH_HEIGHT - (GOAL_DEPTH/2 + ROBOT_RADIUS))) # Clamp y to goal bounds.
+
+        return {"action": "move", "parameters": {"angle": angle_between_points(robot.x, robot.y, goal_x, goal_y)}}
+
 
 class Strategy(ABC):
     @abstractmethod
@@ -143,6 +156,8 @@ class RoleBasedStrategy(Strategy):
                 return SupportPosition().execute(robot, game, game_state)
             elif robot.role == "defender":
                 return DefendPosition().execute(robot, game, game_state)
+            elif robot.role == "goalkeeper":
+                return GoalkeeperPosition().execute(robot, game, game_state)
             else:
                 return GetBall().execute(robot, game, game_state)
 
@@ -200,7 +215,7 @@ class Robot:
         self.vx = 0
         self.vy = 0
         self.game = game
-        self.role = "attacker"
+        self.role = "attacker" # Default role
         self.strategy = strategy
         self.current_action = "idle"
         self.state = GetBall()
@@ -298,9 +313,9 @@ class Robot:
             "ball_vy": self.game.ball.vy,
             "teammates": teammates,
             "opponent_robots": opponent_robots,
-            "own_goal_x": self.game.goal_a.x + GOAL_WIDTH/2 if self.team == "A" else self.game.goal_b.x + GOAL_WIDTH/2 , # Goal x is now horizontal center of goalnet
-            "own_goal_y": self.game.goal_a.y + (PITCH_HEIGHT/2) if self.team == "A" else self.game.goal_b.y+ (PITCH_HEIGHT/2), # Goal y is vertical center
-            "opponent_goal_x": self.game.goal_b.x + GOAL_WIDTH/2 if self.team == "A" else self.game.goal_a.x + GOAL_WIDTH/2, # Goal x is now horizontal center of goalnet
+            "own_goal_x": self.game.goal_a.x + GOAL_WIDTH/2 if self.team == "A" else self.game.goal_b.x + GOAL_WIDTH/2 ,
+            "own_goal_y": self.game.goal_a.y + (PITCH_HEIGHT/2) if self.team == "A" else self.game.goal_b.y+ (PITCH_HEIGHT/2),
+            "opponent_goal_x": self.game.goal_b.x + GOAL_WIDTH/2 if self.team == "A" else self.game.goal_a.x + GOAL_WIDTH/2,
             "opponent_goal_y": self.game.goal_b.y+ (PITCH_HEIGHT/2) if self.team == "A" else self.game.goal_a.y+ self.game.goal_a.height / 2,
             "pitch_width": PITCH_WIDTH,
             "pitch_height": PITCH_HEIGHT,
@@ -312,7 +327,7 @@ class Robot:
         game_state = self.get_game_state()
         action = self.strategy.make_strategic_decision(self, self.game, game_state)
         if action is None:
-            angle_to_ball = math.atan2(self.game.ball.y - self.y, self.game.ball.x - self.game.ball.y)
+            angle_to_ball = angle_between_points(self.x, self.y, self.game.ball.x, self.game.ball.y)
             dist_to_ball = distance(self.x, self.y, self.game.ball.x, self.game.ball.y)
             if dist_to_ball > ROBOT_RADIUS + BALL_RADIUS:
                 self.move(math.cos(angle_to_ball), math.sin(angle_to_ball))
@@ -367,25 +382,23 @@ class Ball:
 
 class GoalNet:
     def __init__(self, x, y, team):
-        self.x = x  # Top-left x-coordinate - now horizontal center of goal line
-        self.y = y  # Top-left y-coordinate - vertical center of goal line
-        self.width = GOAL_WIDTH # GOAL_WIDTH now represents line thickness
-        self.height = GOAL_LINE_LENGTH # GOAL_HEIGHT now represents GOAL_LINE_LENGTH
+        self.x = x
+        self.y = y # vertical center of goal line
+        self.width = GOAL_WIDTH # Line thickness
+        self.height = GOAL_LINE_LENGTH # Line length - vertical
         self.team = team
         self.line_offset_horizontal = GOAL_WIDTH // 2 # Horizontal offset for line center
 
     def check_collision(self, ball):
-        # Check if ball's x is at goal line x-position AND ball's y is within goal vertical extent
-        if self.team == "A": # Team A goal is on LEFT
+        if self.team == "A":
             return ball.x <= self.x + self.line_offset_horizontal + BALL_RADIUS and self.y - self.height/2 <= ball.y <= self.y + self.height/2
-        elif self.team == "B": # Team B goal is on RIGHT
+        elif self.team == "B":
             return ball.x >= self.x - self.line_offset_horizontal - BALL_RADIUS and self.y - self.height/2 <= ball.y <= self.y + self.height/2
         return False
 
     def draw(self, screen):
-        # Draw GoalNet as single vertical line at the pitch edge - now VERTICAL GOAL LINE
         line_thickness = GOAL_WIDTH
-        goal_line_length = GOAL_LINE_LENGTH # Get goal line length from constant
+        goal_line_length = GOAL_LINE_LENGTH
 
         goal_line_top_y = self.y - goal_line_length // 2 # Vertically center goal line
 
@@ -421,10 +434,11 @@ class FootballGame:
             "B": "RoleBased"
         }
 
+        # Initialize robots - NOW 4 ROBOTS PER TEAM!
         self.robots = []
-        robot_ids = ["A1", "A2", "A3", "B1", "B2", "B3"]
+        robot_ids = ["A1", "A2", "A3", "A4", "B1", "B2", "B3", "B4"]
         for i, robot_id in enumerate(robot_ids):
-            team = "A" if i < 3 else "B"
+            team = "A" if i < 4 else "B"
             color = RED if team == "A" else BLUE
             self.robots.append(Robot(robot_id, 0, 0, team, color, self, self.strategies[self.team_strategies[team]]))
 
@@ -440,10 +454,12 @@ class FootballGame:
         self.ball.vy = 0
 
         # Initialize goalnets - GOALNETS NOW VERTICAL LINES IN CENTRE OF GOAL REGIONS
-        region_4_rect = self.pitch_regions[4] #Region 4 to get x-coord for Goal A
-        region_7_rect = self.pitch_regions[7] #Region 7 to get x-coord for Goal B
-        self.goal_a = GoalNet(region_4_rect.right, PITCH_HEIGHT // 2, "A") # Team A Goal is between regions 4 and 8 - corrected goal placement!
-        self.goal_b = GoalNet(region_7_rect.right, PITCH_HEIGHT // 2, "B") # Team B Goal is between regions 7 and 11 - corrected goal placement!
+        region_4_rect = self.pitch_regions[4]
+        region_8_rect = self.pitch_regions[8]
+        region_7_rect = self.pitch_regions[7]
+        region_11_rect = self.pitch_regions[11]
+        self.goal_a = GoalNet((region_4_rect.left+region_8_rect.left)/2, (region_4_rect.centery+region_8_rect.centery)/2, "A") # Team A Goal is centered between regions 4 and 8 - CORRECTED VERTICAL PLACEMENT! - VERTICALLY CENTERED!
+        self.goal_b = GoalNet((region_7_rect.right+region_11_rect.right)/2, (region_7_rect.centery+region_11_rect.centery)/2, "B") # Team B Goal is centered between regions 7 and 11 - CORRECTED VERTICAL PLACEMENT! - VERTICALLY CENTERED!
         self.goals = [self.goal_a, self.goal_b]
 
         self.game_over = False
@@ -492,11 +508,13 @@ class FootballGame:
                 "striker": [14, 15, 16, 17],
                 "supporter": [9, 10, 11, 12, 13],
                 "defender": [4, 5, 6, 7, 8],
+                "goalkeeper": [0, 1, 2, 3],
             },
             "defense": {
                 "striker": [9, 10],
                 "supporter": [4, 5, 6, 7],
                 "defender": [0, 1, 2, 3],
+                "goalkeeper": [0, 1, 2, 3],
             }
         }
 
@@ -517,12 +535,13 @@ class FootballGame:
         for team in ["A", "B"]:
             team_robots = [robot for robot in self.robots if robot.team == team]
 
-            if len(team_robots) >= 3:
+            if len(team_robots) >= 4:
                  random.shuffle(team_robots)
 
                  team_robots[0].role = "striker"
                  team_robots[1].role = "supporter"
                  team_robots[2].role = "defender"
+                 team_robots[3].role = "goalkeeper"
             else:
                 print ("ERROR: Number of robots does not match number of roles. ")
 
@@ -532,7 +551,7 @@ class FootballGame:
         team_a_robots = [robot for robot in self.robots if robot.team == "A"]
         team_b_robots = [robot for robot in self.robots if robot.team == "B"]
 
-        roles = ["striker", "supporter", "defender"]
+        roles = ["striker", "supporter", "defender", "goalkeeper"]
         pitch_midline_x = PITCH_WIDTH / 2
 
         # Position Team A robots (LEFT half)
@@ -545,7 +564,7 @@ class FootballGame:
                     team_a_robots[i].x, team_a_robots[i].y = region_center
             else:
                 print(f"Warning: No suitable starting region for Team A, role: {role}. Placing at default.")
-                team_a_robots[i].x, team_a_robots[i].y = ROBOT_RADIUS, ROBOT_RADIUS + i * 2 * ROBOT_RADIUS
+                team_a_robots[i].x, team_a_robots[i].y = ROBOT_RADIUS + GOAL_WIDTH + i * 2 * ROBOT_RADIUS, ROBOT_RADIUS + i * 2 * ROBOT_RADIUS
 
         # Position Team B robots (RIGHT half)
         team_b_regions = [region_id for region_id, rect in self.pitch_regions.items() if rect.centerx >= pitch_midline_x]
@@ -557,7 +576,7 @@ class FootballGame:
                     team_b_robots[i].x, team_b_robots[i].y = region_center
             else:
                 print(f"Warning: No suitable starting region for Team B, role: {role}. Placing at default.")
-                team_b_robots[i].x, team_b_robots[i].y = PITCH_WIDTH - ROBOT_RADIUS, ROBOT_RADIUS + i * 2 * ROBOT_RADIUS
+                team_b_robots[i].x, team_b_robots[i].y = PITCH_WIDTH - (ROBOT_RADIUS+ GOAL_WIDTH + i * 2 * ROBOT_RADIUS), ROBOT_RADIUS + i * 2 * ROBOT_RADIUS
 
         self.ball.x = PITCH_WIDTH // 2
         self.ball.y = PITCH_HEIGHT // 2
@@ -650,8 +669,8 @@ class FootballGame:
     def run(self):
         running = True
         dribbling_robot = None
-        team_a_actions = ["None"] * 3
-        team_b_actions = ["None"] * 3
+        team_a_actions = ["None"] * 4 # Now 4 robots per team
+        team_b_actions = ["None"] * 4 # Now 4 robots per team
         # Main loop
         while running:
             for event in pygame.event.get():
@@ -682,9 +701,9 @@ class FootballGame:
                             robot_action = "role positioning"
 
                 if robot.team == "A":
-                    team_a_actions[i % 3] = f"{robot.role}: {robot_action}"
+                    team_a_actions[i % 4] = f"{robot.role}: {robot_action}" # Now 4 robots per team
                 else:
-                    team_b_actions[i % 3] = f"{robot.role}: {robot_action}"
+                    team_b_actions[i % 4] = f"{robot.role}: {robot_action}" # Now 4 robots per team
 
             dribbling_robot = None
             for robot in self.robots:
@@ -729,6 +748,9 @@ class FootballGame:
             ui_text_y_offset += 30
             a3_text = self.font_action_small.render(f"A3: {team_a_actions[2]}", True, RED)
             self.screen.blit(a3_text, (PITCH_WIDTH + 10, ui_text_y_offset))
+            ui_text_y_offset += 30
+            a4_text = self.font_action_small.render(f"A4: {team_a_actions[3]}", True, RED)
+            self.screen.blit(a4_text, (PITCH_WIDTH + 10, ui_text_y_offset))
 
             ui_text_y_offset += 40
 
@@ -743,6 +765,9 @@ class FootballGame:
             ui_text_y_offset += 30
             b3_text = self.font_action_small.render(f"B3: {team_b_actions[2]}", True, BLUE)
             self.screen.blit(b3_text, (PITCH_WIDTH + 10, ui_text_y_offset))
+            ui_text_y_offset += 30
+            b4_text = self.font_action_small.render(f"B4: {team_b_actions[3]}", True, BLUE)
+            self.screen.blit(b4_text, (PITCH_WIDTH + 10, ui_text_y_offset))
 
 
             if self.game_over:
