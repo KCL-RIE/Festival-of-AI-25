@@ -29,6 +29,7 @@ RED = (255, 0, 0)
 BLUE = (0, 0, 255)
 GREEN = (0, 255, 0)
 YELLOW = (255, 255, 0)
+GREY = (200, 200, 200)  # Grey color for grid lines - not used anymore
 UI_BACKGROUND = (220, 220, 220)
 SHOOT_CHANCE = 0.2
 PASS_CHANCE = 0.7  # Adjusted Pass Chance
@@ -67,6 +68,8 @@ class GetBall(RobotState):
          dist_to_ball = distance(robot.x, robot.y, game_state["ball_x"], game_state["ball_y"])
          if dist_to_ball > ROBOT_RADIUS + BALL_RADIUS:  # Is far from ball
             return {"action": "move", "parameters": {"angle": angle_to_ball}} #Head to ball.
+         else:
+             return {"action": "idle"}
 
 class Dribble(RobotState): #Basic dribbling
     def execute(self, robot, game, game_state):
@@ -77,25 +80,34 @@ class Dribble(RobotState): #Basic dribbling
 
 class SupportPosition(RobotState): #Basic Supporter position.
     def execute(self, robot, game, game_state):
-        striker = None
-        closest = 9999999
-        for team_robot in game.robots: # find a striker
-            if team_robot.team == robot.team and team_robot.role == "striker" and team_robot != robot: # not itself
-                dist = distance (robot.x, robot.y, team_robot.x, team_robot.y) #find the distance between robot and any potential striker
-                if dist < closest:
-                    striker = team_robot #assign that robot!
-        if striker:
-            angle_to_position = angle_between_points(robot.x, robot.y, striker.x, striker.y) #Angle to that robot
-            return {"action": "move", "parameters": {"angle": angle_to_position}} #move!
+        formation_name = game.current_formation # Get current formation
+        formation = game.formations[formation_name] # Get formation dictionary
+
+        target_regions = formation.get(robot.role) # Get target regions for robot's role
+        if target_regions:
+            # Choose a target region (e.g., randomly from the list)
+            target_region_id = random.choice(target_regions)
+            goal_x, goal_y = game.get_region_center(target_region_id)
+            if goal_x and goal_y:
+                angle_to_region_center = angle_between_points(robot.x, robot.y, goal_x, goal_y)
+                return {"action": "move", "parameters": {"angle": angle_to_region_center}}
+        return {"action": "idle"} # Fallback if no target region
+
 
 class DefendPosition(RobotState): #Basic defensive position
     def execute(self, robot, game, game_state):
-        own_goal_x = game_state["own_goal_x"]
-        own_goal_y = game_state["own_goal_y"]
+        formation_name = game.current_formation # Get current formation
+        formation = game.formations[formation_name] # Get formation dictionary
 
-        # Position yourself between the ball and your goal
-        angle_to_goal = angle_between_points(robot.x, robot.y, own_goal_x, own_goal_y)
-        return {"action": "move", "parameters": {"angle": angle_to_goal}}
+        target_regions = formation.get(robot.role) # Get target regions for robot's role
+        if target_regions:
+            # Choose a target region (e.g., randomly from the list)
+            target_region_id = random.choice(target_regions)
+            goal_x, goal_y = game.get_region_center(target_region_id)
+            if goal_x and goal_y:
+                angle_to_region_center = angle_between_points(robot.x, robot.y, goal_x, goal_y)
+                return {"action": "move", "parameters": {"angle": angle_to_region_center}}
+        return {"action": "idle"} # Fallback if no target region
 
 class Strategy(ABC):
     @abstractmethod
@@ -273,10 +285,10 @@ class Robot:
             "ball_vy": self.game.ball.vy,
             "teammates": teammates, #List of teammates
             "opponent_robots": opponent_robots,
-            "own_goal_x": self.game.goal_a.x + self.game.goal_a.width / 2 if self.team == "B" else self.game.goal_b.x + self.game.goal_b.width / 2,
-            "own_goal_y": self.game.goal_a.y + self.game.goal_a.height / 2 if self.team == "B" else self.game.goal_b.y + self.game.goal_b.height / 2,
-            "opponent_goal_x": self.game.goal_b.x + self.game.goal_b.width / 2 if self.team == "A" else self.game.goal_a.x + self.game.goal_a.width / 2,
-            "opponent_goal_y": self.game.goal_b.y + self.game.goal_b.height / 2 if self.team == "A" else self.game.goal_a.y + self.game.goal_a.height / 2,
+            "own_goal_x": self.game.goal_a.x + self.game.goal_a.width / 2 if self.team == "A" else self.game.goal_b.x + self.game.goal_b.width / 2, # Team A own goal is goal_a (left)
+            "own_goal_y": self.game.goal_a.y + self.game.goal_a.height / 2 if self.team == "A" else self.game.goal_b.y + self.game.goal_b.height / 2, # Team A own goal is goal_a (left)
+            "opponent_goal_x": self.game.goal_b.x + self.game.goal_b.width / 2 if self.team == "A" else self.game.goal_a.x + self.game.goal_a.width / 2, # Team A opponent goal is goal_b (right)
+            "opponent_goal_y": self.game.goal_b.y + self.game.goal_b.height / 2 if self.team == "A" else self.game.goal_a.y + self.game.goal_a.height / 2, # Team A opponent goal is goal_b (right)
             "pitch_width": PITCH_WIDTH,
             "pitch_height": PITCH_HEIGHT,
             "distance_to_ball": distance(self.x, self.y, self.game.ball.x, self.game.ball.y)
@@ -369,6 +381,15 @@ class FootballGame: #Main game loop
         pygame.display.set_caption("Robot Football")
         self.clock = pygame.time.Clock()
 
+        # Define pitch regions
+        self.pitch_regions = {}
+        self._define_pitch_regions()
+
+        # Define formations
+        self.formations = {}
+        self._define_formations()
+        self.current_formation = "attack" # Default formation
+
         # Define available strategies
         self.strategies = {
             "RoleBased": RoleBasedStrategy() #Now only role based strategy!
@@ -411,8 +432,8 @@ class FootballGame: #Main game loop
         self.ball.vy = 0  # Ball starts with zero velocity
 
         # Initialize goalnets at opposite ends of the pitch
-        self.goal_a = GoalNet(0, PITCH_HEIGHT // 2 - GOAL_HEIGHT // 2, "A")  # Team A's goal
-        self.goal_b = GoalNet(PITCH_WIDTH - GOAL_WIDTH, PITCH_HEIGHT // 2 - GOAL_HEIGHT // 2, "B")  # Team B's goal
+        self.goal_a = GoalNet(0, PITCH_HEIGHT // 2 - GOAL_HEIGHT // 2, "A")  # Team A's goal (LEFT)
+        self.goal_b = GoalNet(PITCH_WIDTH - GOAL_WIDTH, PITCH_HEIGHT // 2 - GOAL_HEIGHT // 2, "B")  # Team B's goal (RIGHT)
         self.goals = [self.goal_a, self.goal_b]
 
         self.game_over = False
@@ -426,8 +447,71 @@ class FootballGame: #Main game loop
         self.button_text = self.font.render("Place Ball", True, BUTTON_TEXT_COLOR)
         self.button_text_rect = self.button_text.get_rect(center=self.button_rect.center)
 
+        self.font_action_small = pygame.font.Font(None, int(16 * SCALE_FACTOR)) # Smaller font for robot action.
         self.font_action = pygame.font.Font(None, int(20 * SCALE_FACTOR)) #Font for robot action.
+        self.font_region_label = pygame.font.Font(None, int(14 * SCALE_FACTOR)) # Font for region labels
         self.setup_initial_positions()
+
+    def _define_pitch_regions(self):
+        """Defines regions on the pitch."""
+        num_regions_x = 4  # Number of regions horizontally
+        num_regions_y = 4  # Number of regions vertically
+
+        region_width = PITCH_WIDTH / num_regions_x
+        region_height = PITCH_HEIGHT / num_regions_y
+
+        region_id_counter = 0
+        self.pitch_regions = {}  # Store regions as {region_id: Rect}
+
+        for y_region in range(num_regions_y):
+            for x_region in range(num_regions_x):
+                x_start = x_region * region_width
+                y_start = y_region * region_height
+                region_rect = pygame.Rect(x_start, y_start, region_width, region_height) # corrected here, was y_start
+                self.pitch_regions[region_id_counter] = region_rect
+                region_id_counter += 1
+
+        # Optional: Map region IDs to the numbering in your image (if needed for clarity)
+        # This is just for mapping visually, the code logic can use region_id_counter directly
+        self.region_id_map = {
+            15: 0, 12: 1, 9: 2, 6: 3,
+            16: 4, 13: 5, 10: 6, 7: 7,
+            17: 8, 14: 9, 11: 10, 8: 11,
+            0: 12, 3: 13, 4: 14, 5: 15, # Example - adjust to match your image numbering
+            1: 16, 2: 17 # Add any missing regions or adjust based on numbering in image
+        }
+
+    def _define_formations(self):
+        """Defines team formations for attack and defense."""
+        self.formations = {
+            "attack": {
+                "striker": [14, 15, 16, 17],  # Attacking regions for striker (opponent's half)
+                "supporter": [9, 10, 11, 12, 13], # Midfield/attacking midfield for supporters
+                "defender": [4, 5, 6, 7, 8],  # Defensive midfield/own half for defenders
+            },
+            "defense": {
+                "striker": [9, 10],  # Striker falls back to defensive midfield
+                "supporter": [4, 5, 6, 7], # Supporters in defensive midfield/own half
+                "defender": [0, 1, 2, 3],   # Defenders close to own goal
+            }
+        }
+
+    def get_region_center(self, region_id):
+        """Returns the center coordinates of a region."""
+        if region_id in self.pitch_regions:
+            region_rect = self.pitch_regions[region_id]
+            return region_rect.center
+        return None # Or handle error if region_id is invalid
+
+    def draw_pitch_regions(self, screen):
+        """Draws the pitch region grid on the screen with labels."""
+        for region_id, region_rect in self.pitch_regions.items():
+            pygame.draw.rect(screen, BLACK, region_rect, 1) # Draw rectangles for regions - more robust for alignment
+            # Label regions with their IDs
+            label_text = self.font_region_label.render(str(region_id), True, BLACK) #Region labels are black
+            label_rect = label_text.get_rect(center=region_rect.center)
+            screen.blit(label_text, label_rect)
+
 
     def assign_roles(self):
         #Assign roles to robots based on a random probability distribution
@@ -444,63 +528,48 @@ class FootballGame: #Main game loop
             else:
                 print ("ERROR: Number of robots does not match number of roles. ")
 
-    def change_strategy(self, team, strategy_name): #Removed, not needed
-        pass
-
 
     def setup_initial_positions(self):
-        font = pygame.font.Font(None, int(30 * SCALE_FACTOR))
-        robot_index = 0
-        while robot_index < len(self.robots):
-            self.screen.fill(GREEN)
-            text = font.render(f"Place Robot {robot_index + 1} (Team {self.robots[robot_index].team}, Role: {self.robots[robot_index].role}). Click to place.", True, WHITE)
-            text_rect = text.get_rect(center=(PITCH_WIDTH // 2, PITCH_HEIGHT // 4))  # Position text higher
-            self.screen.blit(text, text_rect)
-            pygame.display.flip()
+        """Sets up initial robot positions based on formation, team sides."""
+        formation = self.formations["attack"]  # Start in attack formation
 
-            placing = True
-            while placing:
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        pygame.quit()
-                        exit()  # Exit the program
-                    if event.type == pygame.MOUSEBUTTONDOWN:
-                        x = event.pos[0]  # Get x-coordinate
-                        y = event.pos[1]  # Get y-coordinate
-                        if ROBOT_RADIUS <= x <= PITCH_WIDTH - ROBOT_RADIUS and ROBOT_RADIUS <= y <= PITCH_HEIGHT - ROBOT_RADIUS:
-                            self.robots[robot_index].x = x
-                            self.robots[robot_index].y = y
-                            placing = False
-                            break
-                        else:
-                            print("Invalid position. Place within the pitch boundaries.")
-            robot_index += 1
+        team_a_robots = [robot for robot in self.robots if robot.team == "A"]
+        team_b_robots = [robot for robot in self.robots if robot.team == "B"]
 
-        # After placing robots, place the ball
-        ball_placed = False
-        while not ball_placed:
-            self.screen.fill(GREEN)
-            text = font.render("Place the Ball. Click to place.", True, WHITE)
-            text_rect = text.get_rect(center=(PITCH_WIDTH // 2, PITCH_HEIGHT // 4))  # Position text higher
-            self.screen.blit(text, text_rect)
-            pygame.display.flip()
+        roles = ["striker", "supporter", "defender"]
+        pitch_midline_x = PITCH_WIDTH / 2
 
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    exit()
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    x = event.pos[0]  # Get x-coordinate
-                    y = event.pos[1]  # Get y-coordinate
-                    if BALL_RADIUS <= x <= PITCH_WIDTH - BALL_RADIUS and BALL_RADIUS <= y <= PITCH_HEIGHT - BALL_RADIUS:
-                        self.ball.x = x
-                        self.ball.y = y
-                        self.ball.vx = 0
-                        self.ball.vy = 0
-                        ball_placed = True
-                        break
-                    else:
-                        print("Invalid position. Place within the pitch boundaries.")
+        # Position Team A robots (LEFT half)
+        team_a_regions = [region_id for region_id, rect in self.pitch_regions.items() if rect.centerx < pitch_midline_x] #Regions on left side
+        for i, role in enumerate(roles):
+            target_region_ids = [reg for reg in formation[role] if reg in team_a_regions] # Filter regions for team A side
+            if target_region_ids: # Ensure there are regions on team A side for this role
+                region_center = self.get_region_center(random.choice(target_region_ids)) # Random region for start within team A side
+                if region_center:
+                    team_a_robots[i].x, team_a_robots[i].y = region_center
+            else: # Fallback if no region found on team A side for role
+                print(f"Warning: No suitable starting region for Team A, role: {role}. Placing at default.")
+                team_a_robots[i].x, team_a_robots[i].y = ROBOT_RADIUS, ROBOT_RADIUS + i * 2 * ROBOT_RADIUS # Default pos
+
+        # Position Team B robots (RIGHT half)
+        team_b_regions = [region_id for region_id, rect in self.pitch_regions.items() if rect.centerx >= pitch_midline_x] #Regions on right side
+        for i, role in enumerate(roles):
+            target_region_ids = [reg for reg in formation[role] if reg in team_b_regions] # Filter regions for team B side
+            if target_region_ids: # Ensure there are regions on team B side for this role
+                region_center = self.get_region_center(random.choice(target_region_ids))
+                if region_center:
+                    team_b_robots[i].x, team_b_robots[i].y = region_center
+            else: # Fallback if no region found on team B side for role
+                print(f"Warning: No suitable starting region for Team B, role: {role}. Placing at default.")
+                team_b_robots[i].x, team_b_robots[i].y = PITCH_WIDTH - ROBOT_RADIUS, ROBOT_RADIUS + i * 2 * ROBOT_RADIUS # Default pos
+
+
+        # Place the ball in the center
+        self.ball.x = PITCH_WIDTH // 2
+        self.ball.y = PITCH_HEIGHT // 2
+        self.ball.vx = 0
+        self.ball.vy = 0
+
 
     def handle_collisions(self): #unchanged
         # Robot-Robot collisions - robots should not pass each other!
@@ -626,7 +695,7 @@ class FootballGame: #Main game loop
                     robot_action = "dribbling" #Dribble
                 else:
                     action = robot.make_strategic_decision()  # Get action state
-                    if isinstance(action, dict) and action is not None and "action" in action:  # If action is a Dict, Not None and has 'action' key
+                    if isinstance(action, dict) and action is not None and "action" in action:  # If action is a Dict, Not None and has "action" in action:
                         if action["action"] == "move":
                             if "parameters" in action:  # Check if parameters exist
                                 robot.move(math.cos(action["parameters"]["angle"]), math.sin(action["parameters"]["angle"]))  # Move!
@@ -663,12 +732,15 @@ class FootballGame: #Main game loop
                 break
 
             # Clear the screen
-            self.screen.fill(GREEN)  # Pitch color
+            self.screen.fill(GREEN)  # Pitch color - stays green now!
 
-            #Draw UI here and then draw.
-            pygame.draw.rect(self.screen, UI_BACKGROUND, (0, 0, PITCH_WIDTH + UI_WIDTH, UI_HEIGHT)) #draw rectangle at the top of pitch
+            # Draw pitch regions (grid lines)
+            self.draw_pitch_regions(self.screen)
 
-            # Draw everything
+            #Draw UI in the right hand side empty space
+            pygame.draw.rect(self.screen, UI_BACKGROUND, (PITCH_WIDTH, 0, UI_WIDTH, UI_HEIGHT)) #draw rectangle on right side
+
+            # Draw everything on the pitch
             self.ball.draw(self.screen)
             for robot in self.robots:
                 robot.draw(self.screen)
@@ -681,26 +753,36 @@ class FootballGame: #Main game loop
             pygame.draw.rect(self.screen, BUTTON_COLOR, self.button_rect)
             self.screen.blit(self.button_text, self.button_text_rect) # Blit text on the button
 
-            #Draw all text on the screen for UI:
+            # UI Text Display on the right side
+            ui_text_y_offset = 10 #Start Y position for UI text
             team_a_text = self.font_action.render("Team A:", True, RED)
-            self.screen.blit(team_a_text, (10, 10))
-            a1_text = self.font_action.render(f"A1: {team_a_actions[0]}", True, RED)
-            self.screen.blit(a1_text, (10, 25))
-            a2_text = self.font_action.render(f"A2: {team_a_actions[1]}", True, RED)
-            self.screen.blit(a2_text, (10, 40))
-            a3_text = self.font_action.render(f"A3: {team_a_actions[2]}", True, RED)
-            self.screen.blit(a3_text, (10, 55))
+            self.screen.blit(team_a_text, (PITCH_WIDTH + 10, ui_text_y_offset)) #Display on right UI
+            ui_text_y_offset += 20 #Increment for next line.
+            a1_text = self.font_action_small.render(f"A1: {team_a_actions[0]}", True, RED) #Smaller font
+            self.screen.blit(a1_text, (PITCH_WIDTH + 10, ui_text_y_offset)) #Display on right UI
+            ui_text_y_offset += 20 #Increment for next line.
+            a2_text = self.font_action_small.render(f"A2: {team_a_actions[1]}", True, RED) #Smaller font
+            self.screen.blit(a2_text, (PITCH_WIDTH + 10, ui_text_y_offset)) #Display on right UI
+            ui_text_y_offset += 20 #Increment for next line.
+            a3_text = self.font_action_small.render(f"A3: {team_a_actions[2]}", True, RED) #Smaller font
+            self.screen.blit(a3_text, (PITCH_WIDTH + 10, ui_text_y_offset)) #Display on right UI
+
+            ui_text_y_offset += 30 #Increment, bigger gap for next team
 
             team_b_text = self.font_action.render("Team B:", True, BLUE)
-            self.screen.blit(team_b_text, (PITCH_WIDTH / 2 +10, 10))  # Move further to right
-            b1_text = self.font_action.render(f"B1: {team_b_actions[0]}", True, BLUE)
-            self.screen.blit(b1_text, (PITCH_WIDTH / 2 +10, 25))  # Move further to right
-            b2_text = self.font_action.render(f"B2: {team_b_actions[1]}", True, BLUE)
-            self.screen.blit(b2_text, (PITCH_WIDTH / 2 +10, 40))  # Move further to right
-            b3_text = self.font_action.render(f"B3: {team_b_actions[2]}", True, BLUE)
-            self.screen.blit(b3_text, (PITCH_WIDTH / 2 +10, 55))  # Move further to right
+            self.screen.blit(team_b_text, (PITCH_WIDTH + 10, ui_text_y_offset))  # Move further to right on UI
+            ui_text_y_offset += 20 #Increment for next line.
+            b1_text = self.font_action_small.render(f"B1: {team_b_actions[0]}", True, BLUE) #Smaller font
+            self.screen.blit(b1_text, (PITCH_WIDTH + 10, ui_text_y_offset))  # Move further to right on UI
+            ui_text_y_offset += 20 #Increment for next line.
+            b2_text = self.font_action_small.render(f"B2: {team_b_actions[1]}", True, BLUE) #Smaller font
+            self.screen.blit(b2_text, (PITCH_WIDTH + 10, ui_text_y_offset))  # Move further to right on UI
+            ui_text_y_offset += 20 #Increment for next line.
+            b3_text = self.font_action_small.render(f"B3: {team_b_actions[2]}", True, BLUE) #Smaller font
+            self.screen.blit(b3_text, (PITCH_WIDTH + 10, ui_text_y_offset))  # Move further to right on UI
 
-            # Display game over message if game is over
+
+            # Display game over message if game is over (Keep it at the bottom center)
             if self.game_over:
                 font = pygame.font.Font(None, int(50 * SCALE_FACTOR))  # Scaled font size
                 text = font.render(f"Team {self.winning_team} Wins!", True, YELLOW)
