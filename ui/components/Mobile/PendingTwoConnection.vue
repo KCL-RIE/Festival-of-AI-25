@@ -1,8 +1,8 @@
 <template>
-    <div>
-        <div class="bg-image">
-            <div class="col px-30 pt-10 relative">
-                <!-- <div class="relative inline-block">
+
+    <div class="bg-image">
+        <div class="col px-30 pt-10 relative">
+            <!-- <div class="relative inline-block">
 
                     <h1 class="glitchtext absolute -left-0.5 text-gray-400" data-text="ROBOT SOCCER">ROBOT <br> SOCCER
                     </h1>
@@ -10,20 +10,20 @@
 
                 </div> -->
 
-                <div class="text-center pt-10">
-                    <div class="relative inline-block">
-                        <span class="glitchtextfront pulse-effect">CONNECTED</span>
-                        <span class="glitchtextback pulse-effect">CONNECTED</span>
-                    </div>
+            <div class="text-center pt-10">
+                <div class="relative inline-block">
+                    <span class="glitchtextfront pulse-effect">CONNECTED</span>
+                    <span class="glitchtextback pulse-effect">CONNECTED</span>
                 </div>
+            </div>
 
-                <div class="text-center pt-10">
-                    <div class="relative inline-block">
-                        <span class="glitchtextfront pulse-effect">WAITING FOR ANOTHER PLAYER</span>
-                        <span class="glitchtextback pulse-effect">WAITING FOR ANOTHER PLAYER</span>
-                    </div>
+            <div class="text-center pt-10">
+                <div class="relative inline-block">
+                    <span class="glitchtextfront pulse-effect">WAITING FOR ANOTHER PLAYER</span>
+                    <span class="glitchtextback pulse-effect">WAITING FOR ANOTHER PLAYER</span>
                 </div>
-                <!-- <div class="pt-8 flex items-center">
+            </div>
+            <!-- <div class="pt-8 flex items-center">
                     <router-link to="/tv/levelselector">
                         <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=http://127.0.0.1:8000/"
                             alt="QR Code" class="h-60 w-60 p-10 bg-white">
@@ -34,42 +34,15 @@
                     </div>
                 </div> -->
 
-            </div>
-
         </div>
+
     </div>
+
 </template>
 
-<script>
-export default {
-    data() {
-        return {
-            socket: null
-        }
-    },
-    mounted() {
-
-        this.socket = new WebSocket((process.env.NODE_ENV === "development" ? "ws://127.0.0.1:8001" : "wss://your-production-url") + "/ws/mobile");
-
-        this.socket.onopen = () => {
-            console.log('Connected to websocket');
-        }
-        this.socket.onmessage = (e) => {
-            console.log(e.data);
-        }
-        this.socket.onerror = (e) => {
-            console.error(e);
-        }
-        this.socket.onclose = (e) => {
-            console.log('Disconnected from websocket');
-        }
-    }
-}
-</script>
 
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Black+Ops+One&display=swap');
-
 
 .bg-image {
     background-image: url('/levelselectbg.jpg');

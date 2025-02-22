@@ -17,10 +17,13 @@ def read_root():
 @app.websocket("/ws/tv/onloading")
 async def websocket_tv_onloading(websocket: WebSocket):
     await websocket.accept()
+    previous_connected_users = None
     try:
         while True:
             global connectedUsers
-            await websocket.send_text(str(connectedUsers))
+            if connectedUsers != previous_connected_users:
+                await websocket.send_text(str(connectedUsers))
+                previous_connected_users = connectedUsers
             await asyncio.sleep(1)  # Adjust the interval as needed
     except Exception as e:
         print(f"Error: {e}")
@@ -39,16 +42,23 @@ async def websocket_mobile(websocket: WebSocket):
         user_id = connectedUsers
         await websocket.accept()
 
-        if connectedUsers == maxConnectedUsers:
-            await websocket.send_json({'userid': user_id, 'ready': True})
-        else:
-            await websocket.send_json({'userid': user_id, 'ready': False})
+        async def broadcast():
+            for connection in app.connections:
+                await connection.send_json({'userid': user_id, 'connectedUsers': connectedUsers})
+
+        if not hasattr(app, 'connections'):
+            app.connections = []
+
+        app.connections.append(websocket)
+        await broadcast()
 
         try:
             while True:
                 data = await websocket.receive_text()
-                await websocket.send_json({'userid': user_id, 'ready': True})
+                await broadcast()
         except Exception as e:
             print(f"Error: {e}")
         finally:
             connectedUsers -= 1
+            app.connections.remove(websocket)
+            await broadcast()
