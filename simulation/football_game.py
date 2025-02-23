@@ -1,11 +1,11 @@
 # football_game.py (Main Simulation File)
-from constants import * # Import constants and functions
 import pygame
 import math
 import random
 import time
 from abc import ABC, abstractmethod
-from ai_strategies import LayeredCapabilitiesStrategy, Strategy, DynamicRoleStrategy, SimpleGoToBallStrategy
+from ai_strategies import Strategy, LayeredCapabilitiesStrategy, DynamicRoleStrategy, SimpleGoToBallStrategy, FormationPassingStrategy
+from constants_and_util import * # Import constants and functions
 
 
 class Robot:
@@ -283,13 +283,14 @@ class FootballGame:
         # Define available strategies (now just strategy classes, not instances)
         self.strategies = {
             "LayeredCapabilities": LayeredCapabilitiesStrategy,
-            "SimpleGoToBall": SimpleGoToBallStrategy,
             "DynamicRole": DynamicRoleStrategy,
+            "SimpleGoToBall": SimpleGoToBallStrategy,
+            "FormationPass": FormationPassingStrategy,
         }
 
         self.team_strategies = {
-            "A": "LayeredCapabilities",
-            "B": "DynamicRole"
+            "A": "DynamicRole",
+            "B": "FormationPass"
         }
 
         # Initialize robots - NOW 4 ROBOTS PER TEAM!
@@ -307,7 +308,7 @@ class FootballGame:
         for robot in self.robots:
             robot.color = RED if robot.team == "A" else BLUE
 
-        print ("Both teams are now using Layered Capabilities Strategy. Roles are: Striker, Supporter, Defender, Goalkeeper.")
+        print ("Available Roles are: Striker, Supporter, Defender, Goalkeeper.")
 
         self.ball = Ball(PITCH_WIDTH // 2, PITCH_HEIGHT // 2)
         self.ball.vx = 0
@@ -365,16 +366,6 @@ class FootballGame:
                 region_rect = pygame.Rect(x_start, y_start, region_width, region_height)
                 self.pitch_regions[region_id_counter] = region_rect
                 region_id_counter += 1
-
-        # region_id_map might need to be reviewed or updated if it's actually used for something.
-        # Currently it seems unused in the provided logic.
-        self.region_id_map = {
-            15: 0, 12: 1, 9: 2, 6: 3, # Example from 4x4 grid, might not be relevant for 5x5
-            16: 4, 13: 5, 10: 6, 7: 7, # Example from 4x4 grid, might not be relevant for 5x5
-            17: 8, 14: 9, 11: 10, 8: 11, # Example from 4x4 grid, might not be relevant for 5x5
-            0: 12, 3: 13, 4: 14, 5: 15, # Example from 4x4 grid, might not be relevant for 5x5
-            1: 16, 2: 17 # Example from 4x4 grid, might not be relevant for 5x5
-        }
 
     def _define_formations(self):
         # Formations are defined using region IDs.
@@ -542,6 +533,16 @@ class FootballGame:
                     else:
                         print("Invalid position. Place within the pitch boundaries.")
 
+    def get_closest_robot_to_ball(self, current_robot): # NEW helper function - find closest robot to ball (any team)
+        closest_robot = None
+        min_distance = float('inf')
+        for robot in self.robots:
+            dist_to_ball = distance(robot.x, robot.y, self.ball.x, self.ball.y)
+            if dist_to_ball < min_distance:
+                min_distance = dist_to_ball
+                closest_robot = robot
+        return closest_robot
+
     def run(self):
         running = True
         dribbling_robot = None
@@ -668,6 +669,7 @@ class FootballGame:
             self.clock.tick(60)
 
         pygame.quit()
+
 
 if __name__ == "__main__":
     game = FootballGame()
