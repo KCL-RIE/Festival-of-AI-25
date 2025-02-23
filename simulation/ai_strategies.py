@@ -570,30 +570,31 @@ class FormationPassingStrategy(Strategy):
             return {"action": "idle", "state_description": "FormationPass-Mid: Decision Tree - Idle (Unknown Action)"} # Default idle for unknown action
 
 
-    def back_role_decision(self, robot, game, game_state, team_robots): # NEW - Decision Tree for Back Role
-        # --- Decision Tree Prediction for Back Role ---
-        features = self.get_back_role_features(robot, game, game_state) # Function to extract features
-        action_index = self.back_role_dtree.predict([features])[0] # Predict action index from decision tree
-        action_name = self.back_role_actions[action_index] # Get action name from index # CORRECTED - was error here, accessing action_name before assignment
+    def back_role_decision(self, robot, game, game_state, team_robots): # ADD team_robots parameter
+        if robot.dribbling:
+            robot_pressure = self.calculate_opponent_pressure(robot, game_state) # Calculate pressure
+            if robot_pressure > ROBOT_RADIUS * 1.5: # If under pressure, prioritize passing from back
+                best_pass_action = self.find_best_formation_pass(robot, game, game_state, preferred_roles=["left_mid", "right_mid", "forward"]) # Prioritize pass under pressure
+                if best_pass_action:
+                    return best_pass_action # Pass to relieve pressure
 
-        if action_name == "pass_midfield":
-             best_pass_action = self.find_best_formation_pass(robot, game, game_state, preferred_roles=["left_mid", "right_mid", "forward"]) # Pass to midfield or forward
-             if best_pass_action:
-                return best_pass_action
-             else:
-                return {"action": "dribble", "parameters": {}, "state_description": "FormationPass-Back: Decision Tree - Dribble (No Midfield Pass)"} # Dribble if no midfield pass
-
-        elif action_name == "long_shot": # Long-range shot from back
-            return {"action": "shoot", "parameters": {}, "state_description": "FormationPass-Back: Decision Tree - Long Shot"} # Attempt long shot
-
-        elif action_name == "defensive_clear": # Defensive clear - kick ball away from own goal
-            return {"action": "move", "parameters": {"angle": angle_between_points(robot.x, robot.y, game_state["opponent_goal_x"], game_state["opponent_goal_y"])}, "state_description": "FormationPass-Back: Decision Tree - Defensive Clear"} # Kick ball towards opponent goal (clearance)
-
-
-        elif action_name == "dribble_back":
-            return {"action": "dribble", "parameters": {}, "state_description": "FormationPass-Back: Decision Tree - Dribbling"} # Dribble in back-field
+            if not self.is_shot_blocked(robot, game_state) and distance(robot.x, robot.y, game_state["opponent_goal_x"], game_state["opponent_goal_y"]) < AGGRESSIVE_SHOOT_RANGE * 2.0: # Increased long shot range for back - even more range
+                if random.random() < LONG_SHOT_CHANCE * 2: # INCREASED chance for long shots from back - doubled chance
+                    return {"action": "shoot", "parameters": {}, "state_description": "FormationPass-Back: Long Shot (High Chance)"} # Higher chance for long shot
+                else: # If long shot chance fails, consider passing
+                    best_pass_action = self.find_best_formation_pass(robot, game, game_state, preferred_roles=["left_mid", "right_mid", "forward"]) # Check for pass even if long shot chance fails
+                    if best_pass_action:
+                        return best_pass_action
+                    else:
+                        return {"action": "dribble", "parameters": {}, "state_description": "FormationPass-Back: Dribbling (No Pass, Fallback Dribble-Shot)"} # Dribble if no pass, try to create shooting chance
+            else: # No clear shot (or long shot chance failed) - Default Dribble or Pass
+                best_pass_action = self.find_best_formation_pass(robot, game, game_state, preferred_roles=["left_mid", "right_mid", "forward"]) # Check for pass
+                if best_pass_action:
+                    return best_pass_action
+                else:
+                    return {"action": "dribble", "parameters": {}, "state_description": "FormationPass-Back: Dribbling (No Pass/Shot, Default Dribble)"} # Default dribble if no pass or shot
         else:
-            return {"action": "idle", "state_description": "FormationPass-Back: Decision Tree - Idle (Unknown Action)"} # Default idle for unknown action
+            return self.get_in_formation_position(robot, game, game_state, team_robots) # Move to formation position
 
 
     def get_forward_role_features(self, robot, game, game_state): # NEW - Feature extraction for forward role
@@ -630,13 +631,13 @@ class FormationPassingStrategy(Strategy):
             best_teammate = None
             for teammate in game.robots:
                 if teammate.team == robot.team and teammate != robot and teammate.formation_role == preferred_role:
-                    if not self.is_path_blocked(robot, teammate, game_state): # Path clear to teammate # CORRECTED - Added 'game_state' argument to call
+                    if not self.is_path_blocked(robot, game_state): # Path clear to teammate
                         teammate_openness = self.calculate_teammate_openness(teammate, game_state) # NEW - Calculate teammate openness
                         pass_distance = distance(robot.x, robot.y, teammate.x, teammate.y)
                         pass_angle_to_goal = angle_between_points(teammate.x, teammate.y, game_state["opponent_goal_x"], game_state["opponent_goal_y"])
                         pass_forward_progress = math.cos(pass_angle_to_goal) # Closer to 0 degrees (directly towards goal) is better
 
-                        pass_score = teammate_openness * 0.7 + (1/pass_distance) * 0.1 + pass_forward_progress * 0.05 # Re-weighted score - emphasize openness and shot potential
+                        pass_score = teammate_openness * 0.6 + pass_forward_progress * 0.05 # Re-weighted score - emphasize openness and shot potential - removed pass_distance weight
 
                         if robot_pressure > 2 * ROBOT_RADIUS: # Increase pass score if robot is under pressure - makes passing more urgent
                             pass_score *= 1.4 # Boost pass score if under pressure - slightly reduced boost again
@@ -648,6 +649,12 @@ class FormationPassingStrategy(Strategy):
                         # --- End Teammate Shooting Potential ---
 
                         pass_score += teammate_openness * 0.2 # NEW - Add direct openness bonus to pass score - encourage passes to open teammates
+
+                        # --- NEW - Pass Length Bonus - Encourage Longer Passes ---
+                        pass_length_bonus = pass_distance / PITCH_WIDTH # Normalize pass distance by pitch width (0 to 1 bonus)
+                        pass_score += pass_length_bonus * 0.2 # Add pass length bonus - 20% weight - encourage longer passes
+                        # --- End Pass Length Bonus ---
+
 
                         if pass_score > best_pass_score: # Found a better pass
                             best_pass_score = pass_score
