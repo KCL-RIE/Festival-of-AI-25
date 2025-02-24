@@ -8,6 +8,13 @@ app = FastAPI()
 connectedUsers = 0
 maxConnectedUsers = 2
 
+gameState = {
+    "connectedUsers": connectedUsers,
+    "maxConnectedUsers": maxConnectedUsers,
+    "connections": [],
+    "difficulty": ""
+}
+
 
 @app.get("/")
 def read_root():
@@ -20,10 +27,9 @@ async def websocket_tv_onloading(websocket: WebSocket):
     previous_connected_users = None
     try:
         while True:
-            global connectedUsers
-            if connectedUsers != previous_connected_users:
-                await websocket.send_text(str(connectedUsers))
-                previous_connected_users = connectedUsers
+            if gameState["connectedUsers"] != previous_connected_users:
+                await websocket.send_text(str(gameState["connectedUsers"]))
+                previous_connected_users = gameState["connectedUsers"]
             await asyncio.sleep(1)  # Adjust the interval as needed
     except Exception as e:
         print(f"Error: {e}")
@@ -33,32 +39,44 @@ async def websocket_tv_onloading(websocket: WebSocket):
 
 @app.websocket("/ws/mobile")
 async def websocket_mobile(websocket: WebSocket):
-    global connectedUsers
-    if connectedUsers >= maxConnectedUsers:
+    if gameState["connectedUsers"] >= gameState["maxConnectedUsers"]:
         await websocket.close()
         return
     else:
-        connectedUsers += 1
-        user_id = connectedUsers
+        gameState["connectedUsers"] += 1
+        user_id = gameState["connectedUsers"]
         await websocket.accept()
 
         async def broadcast():
-            for connection in app.connections:
-                await connection.send_json({'userid': user_id, 'connectedUsers': connectedUsers})
+            for connection in gameState["connections"]:
+                await connection.send_json({'userid': user_id, 'connectedUsers': gameState["connectedUsers"], 'difficulty': gameState["difficulty"]})
 
-        if not hasattr(app, 'connections'):
-            app.connections = []
-
-        app.connections.append(websocket)
+        gameState["connections"].append(websocket)
         await broadcast()
 
         try:
             while True:
-                data = await websocket.receive_text()
+                data = await websocket.receive_json()
+                if data.get("type") == "difficulty":
+                    gameState["difficulty"] = data["difficulty"]
                 await broadcast()
         except Exception as e:
             print(f"Error: {e}")
         finally:
-            connectedUsers -= 1
-            app.connections.remove(websocket)
+            gameState["connectedUsers"] -= 1
+            gameState["connections"].remove(websocket)
             await broadcast()
+
+
+@app.websocket("/ws/robotcontrol")
+async def websocket_robotcontrol(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_text()
+            print(f"Received data: {data}")
+
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        await websocket.close()

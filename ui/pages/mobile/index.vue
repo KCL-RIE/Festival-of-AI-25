@@ -7,7 +7,7 @@
             <MobileLevelSelector :userid="userid" @setDifficulty="setDifficulty" />
         </div>
         <div v-else-if="stage === 2">
-            play!!
+            <MobileJoyStickController :userid="userid" />
         </div>
     </div>
 </template>
@@ -25,6 +25,10 @@ export default {
     methods: {
         setDifficulty(difficulty) {
             console.log("Difficulty set to: ", difficulty);
+            this.socket.send(JSON.stringify({
+                type: "difficulty",
+                difficulty: difficulty
+            }));
             this.stage = 2;
         }
     },
@@ -41,6 +45,10 @@ export default {
 
             if (sentjson.connectedUsers === 2) {
                 this.stage = 1;
+            }
+
+            if (sentjson.difficulty != "") {
+                this.stage = 2;
             }
         }
     }
